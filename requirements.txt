@@ -1,0 +1,6 @@
+anthropic>=0.40.0
+supabase>=2.4.0
+feedparser>=6.0.11
+requests>=2.31.0
+mcp>=1.0.0
+playwright>=1.40.0
