@@ -5,7 +5,7 @@ Claude Agent — scores jobs and generates tailored cover letters.
 - Deduplication in main.py ensures we never re-score a seen job.
 """
 import anthropic
-from config import RESUME_TEXT, ANTHROPIC_API_KEY, REVIEW_MIN_SCORE
+from config import ANTHROPIC_API_KEY, REVIEW_MIN_SCORE, RESUME_TEXT
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -49,10 +49,10 @@ Description:
 Write the cover letter now:"""
 
 
-def score_job(job: dict) -> dict:
+def score_job(job: dict, resume_text: str = None) -> dict:
     """Score a job using Haiku — fast and cheap."""
     prompt = SCORE_PROMPT.format(
-        resume=RESUME_TEXT,
+        resume=resume_text or RESUME_TEXT,
         title=job["title"],
         company=job.get("company", ""),
         location=job.get("location", ""),
@@ -78,10 +78,10 @@ def score_job(job: dict) -> dict:
     return job
 
 
-def generate_cover_letter(job: dict) -> str:
+def generate_cover_letter(job: dict, resume_text: str = None) -> str:
     """Generate cover letter using Sonnet — only called for qualified jobs."""
     prompt = COVER_LETTER_PROMPT.format(
-        resume=RESUME_TEXT,
+        resume=resume_text or RESUME_TEXT,
         title=job["title"],
         company=job.get("company", "the company"),
         description=job.get("description", "")[:3000],
@@ -97,15 +97,16 @@ def generate_cover_letter(job: dict) -> str:
         return f"Error generating cover letter: {e}"
 
 
-def process_jobs(jobs: list[dict], verbose: bool = True) -> tuple[list[dict], list[dict]]:
+def process_jobs(jobs: list[dict], verbose: bool = True, resume_text: str = None) -> tuple[list[dict], list[dict]]:
     """Score all jobs with Haiku, generate cover letters with Sonnet for 7+ only.
     Returns (all_scored, qualified) — all_scored saved to dedup cache, qualified for review.
+    resume_text: override the default resume (used for beta multi-user mode).
     """
     print(f"\n🤖 Scoring {len(jobs)} new jobs with Haiku...")
     scored = []
 
     for i, job in enumerate(jobs):
-        job = score_job(job)
+        job = score_job(job, resume_text=resume_text)
         if verbose:
             flag = "✅" if job["score"] >= REVIEW_MIN_SCORE else "  "
             print(f"  {flag} [{i+1}/{len(jobs)}] {job['title']} @ {job.get('company','')} "
@@ -122,6 +123,6 @@ def process_jobs(jobs: list[dict], verbose: bool = True) -> tuple[list[dict], li
     print("\n✍️  Generating cover letters with Sonnet...")
     for i, job in enumerate(qualified):
         print(f"  [{i+1}/{len(qualified)}] {job['title']} @ {job.get('company','')}")
-        job["cover_letter"] = generate_cover_letter(job)
+        job["cover_letter"] = generate_cover_letter(job, resume_text=resume_text)
 
     return scored, qualified
