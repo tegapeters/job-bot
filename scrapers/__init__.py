@@ -1,29 +1,42 @@
 from .indeed import scrape_indeed
 from .linkedin import scrape_linkedin
 from .remotive import scrape_remotive
+from .weworkremotely import scrape_weworkremotely
+from .jobicy import scrape_jobicy
+
 
 def scrape_all() -> list[dict]:
-    print("🔍 Scraping Indeed...")
-    indeed = scrape_indeed()
-    print(f"   → {len(indeed)} jobs")
+    results = {}
 
-    print("🔍 Scraping LinkedIn...")
-    linkedin = scrape_linkedin()
-    print(f"   → {len(linkedin)} jobs")
+    sources = [
+        ("Indeed",           scrape_indeed),
+        ("LinkedIn",         scrape_linkedin),
+        ("Remotive",         scrape_remotive),
+        ("We Work Remotely", scrape_weworkremotely),
+        ("Jobicy",           scrape_jobicy),
+    ]
 
-    print("🔍 Scraping Remotive...")
-    remotive = scrape_remotive()
-    print(f"   → {len(remotive)} jobs")
+    for name, fn in sources:
+        try:
+            print(f"🔍 Scraping {name}...")
+            jobs = fn()
+            results[name] = jobs
+            print(f"   → {len(jobs)} jobs")
+        except Exception as e:
+            print(f"   ⚠️  {name} failed: {e}")
+            results[name] = []
 
-    all_jobs = indeed + linkedin + remotive
+    all_jobs = [j for jobs in results.values() for j in jobs]
 
     # Deduplicate by URL
     seen = set()
     unique = []
     for j in all_jobs:
-        if j["url"] not in seen:
-            seen.add(j["url"])
+        key = j.get("url") or j.get("id")
+        if key and key not in seen:
+            seen.add(key)
             unique.append(j)
 
-    print(f"\n✅ Total unique jobs found: {len(unique)}")
+    print(f"\n✅ Total unique jobs: {len(unique)}  "
+          f"({' | '.join(f'{n}: {len(v)}' for n, v in results.items())})")
     return unique
