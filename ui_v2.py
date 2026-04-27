@@ -325,7 +325,7 @@ if page == "Setup":
       <h4>How Job Pal works</h4>
       <p>
         1. Paste your resume below — Job Pal uses it to score every job 1–10 for fit.<br><br>
-        2. Go to <b>Run Pipeline</b> — it scrapes LinkedIn, Indeed, Remotive, and more, then Claude AI scores each job against your background and writes a custom cover letter for every match scoring 7+.<br><br>
+        2. Go to <b>Run Pipeline</b> — it scrapes LinkedIn, Indeed, Remotive, and more, then our AI scores each job against your background and writes a custom cover letter for every match scoring 7+.<br><br>
         3. Review your matches in <b>Review Queue</b>, move jobs through <b>Applied → Interviews</b>, and track everything on the <b>Dashboard</b>.
       </p>
     </div>
@@ -454,7 +454,7 @@ elif page == "Dashboard":
 # ═══════════════════════════════════════════════════════════════════
 elif page == "Review Queue":
     page_header("Review Queue", "Jobs worth <em>applying to.</em>")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Scored 7+ by Claude Haiku · Actions update Supabase immediately</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">AI fit score 7+ · Status updates save instantly</div>', unsafe_allow_html=True)
 
     queue = safe_get_queue(min_score=7)
     if not queue:
@@ -586,7 +586,7 @@ elif page == "Run Pipeline":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown('<div class="pipeline-card"><h4>Full Pipeline</h4><p>Scrape all sources → score with Claude Haiku → generate cover letters with Claude Sonnet for jobs scoring 7+</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="pipeline-card"><h4>Full Pipeline</h4><p>Scrape all sources → AI scores every job for fit → generates a custom cover letter for every match scoring 7+</p></div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("▶ Run Full Pipeline", type="primary", use_container_width=True):
             with st.spinner("Scraping jobs..."):
@@ -612,7 +612,7 @@ elif page == "Run Pipeline":
                 st.info(f"Scoring {len(new_jobs)} jobs — this takes 1–3 minutes. Don't close the tab.")
                 progress = st.progress(0, text="Starting AI scoring...")
 
-                progress.progress(10, text=f"Scoring {len(new_jobs)} jobs with Claude Haiku...")
+                progress.progress(10, text=f"Analyzing {len(new_jobs)} jobs against your resume...")
                 from agent import process_jobs
                 all_scored, qualified = process_jobs(new_jobs, verbose=False, resume_text=resume_text)
 
