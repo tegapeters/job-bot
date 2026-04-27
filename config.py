@@ -137,8 +137,15 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-SUPABASE_KEY = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+# Support both Next.js-style and plain secret names for Streamlit Cloud
+SUPABASE_URL = (
+    os.getenv("SUPABASE_URL") or
+    os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+)
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_ANON_KEY") or
+    os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+)
 
 # ── Anthropic ───────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
