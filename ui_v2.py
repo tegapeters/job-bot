@@ -332,49 +332,83 @@ if page == "Setup":
     """, unsafe_allow_html=True)
 
     # ── Refresh warning ──────────────────────────────────────────
-    st.warning("**Beta note:** Your resume is stored in this browser session only. If you refresh the page you will need to re-paste it here. This will be fixed in a future update.")
+    st.warning("**Beta note:** Your resume is stored in this browser session only. If you refresh you will need to re-upload or re-paste it. This will be fixed in a future update.")
 
-    with st.form("resume_form"):
-        st.markdown('<div class="section-label">Your Resume — paste as plain text</div>', unsafe_allow_html=True)
-        resume_input = st.text_area(
-            "Paste your resume here",
+    # ── Resume input: upload or paste ────────────────────────────
+    st.markdown('<div class="section-label">Your Resume</div>', unsafe_allow_html=True)
+    tab_upload, tab_paste = st.tabs(["Upload File", "Paste Text"])
+
+    extracted_text = None
+
+    with tab_upload:
+        uploaded = st.file_uploader(
+            "Upload your resume",
+            type=["pdf", "docx", "txt"],
+            label_visibility="collapsed",
+            help="PDF, DOCX, or TXT — text is extracted automatically",
+        )
+        if uploaded:
+            try:
+                if uploaded.type == "application/pdf":
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(stream=uploaded.read(), filetype="pdf")
+                    extracted_text = "\n".join(page.get_text() for page in doc)
+                elif uploaded.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                    from docx import Document
+                    doc = Document(uploaded)
+                    extracted_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+                else:
+                    extracted_text = uploaded.read().decode("utf-8", errors="ignore")
+
+                st.success(f"✓ {uploaded.name} extracted — {len(extracted_text)} characters")
+                st.markdown(
+                    f'<div class="cover-letter" style="max-height:200px;overflow-y:auto">{extracted_text[:800]}{"..." if len(extracted_text) > 800 else ""}</div>',
+                    unsafe_allow_html=True,
+                )
+            except Exception as e:
+                st.error(f"Could not read file: {e}")
+
+    with tab_paste:
+        pasted = st.text_area(
+            "Paste resume text",
             value=st.session_state.get("resume_text", ""),
-            height=320,
+            height=280,
             placeholder="Paste your full resume as plain text — work history, skills, education, certifications...",
             label_visibility="collapsed",
         )
+        if pasted.strip():
+            extracted_text = pasted.strip()
 
-        st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
-        default_roles = "\n".join(st.session_state.get("target_roles", [
-            "Senior Business Analyst",
-            "Data Engineer",
-            "AI Engineer",
-        ]))
-        roles_input = st.text_area(
-            "Target roles",
-            value=default_roles,
-            height=140,
-            placeholder="Senior Business Analyst\nData Engineer\nAI Engineer",
-            label_visibility="collapsed",
-        )
+    # ── Target roles ─────────────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
+    default_roles = "\n".join(st.session_state.get("target_roles", [
+        "Senior Business Analyst",
+        "Data Engineer",
+        "AI Engineer",
+    ]))
+    roles_input = st.text_area(
+        "Target roles",
+        value=default_roles,
+        height=140,
+        placeholder="Senior Business Analyst\nData Engineer\nAI Engineer",
+        label_visibility="collapsed",
+    )
 
-        submitted = st.form_submit_button("Save & Go to Pipeline →", type="primary", use_container_width=True)
-
-    if submitted:
-        if len(resume_input.strip()) < 100:
-            st.error("Resume looks too short — paste your full resume text.")
+    if st.button("Save & Go to Pipeline →", type="primary", use_container_width=True):
+        if not extracted_text or len(extracted_text.strip()) < 100:
+            st.error("Resume looks too short or empty — upload a file or paste your resume text.")
         else:
-            st.session_state["resume_text"] = resume_input.strip()
+            st.session_state["resume_text"] = extracted_text.strip()
             st.session_state["target_roles"] = [r.strip() for r in roles_input.splitlines() if r.strip()]
             st.success("✓ Resume saved. Click **Run Pipeline** in the sidebar to find your jobs.")
 
     if st.session_state.get("resume_text"):
-        st.markdown('<div class="section-label" style="margin-top:28px">Resume Preview — currently loaded</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label" style="margin-top:28px">Currently Loaded Resume</div>', unsafe_allow_html=True)
         st.markdown(
-            f'<div class="cover-letter">{st.session_state["resume_text"][:600]}{"..." if len(st.session_state["resume_text"]) > 600 else ""}</div>',
+            f'<div class="cover-letter" style="max-height:200px;overflow-y:auto">{st.session_state["resume_text"][:800]}{"..." if len(st.session_state["resume_text"]) > 800 else ""}</div>',
             unsafe_allow_html=True,
         )
-        st.caption("To update your resume, paste a new version above and hit Save again.")
+        st.caption("To update, upload a new file or paste new text and hit Save again.")
 
 
 elif page == "Dashboard":
