@@ -230,6 +230,21 @@ def status_tag(status):
     cls = f"tag tag-{status}" if status in ("new","applied","interview","rejected","skipped") else "tag"
     return f'<span class="{cls}">{status}</span>'
 
+def safe_get_apps():
+    """Fetch all applications, showing a clean error if Supabase is unreachable."""
+    try:
+        return get_all_applications()
+    except Exception as e:
+        st.error(f"Cannot connect to database. Check Supabase secrets in Streamlit Cloud settings. Error: `{e}`")
+        st.stop()
+
+def safe_get_queue(min_score=7):
+    try:
+        return get_review_queue(min_score=min_score)
+    except Exception as e:
+        st.error(f"Cannot connect to database. Check Supabase secrets. Error: `{e}`")
+        st.stop()
+
 def job_card(job, key_prefix, next_statuses, expanded=False):
     """Render a full job card with details, cover letter, and status controls."""
     score = job.get("score") or 0
@@ -344,7 +359,7 @@ if page == "Setup":
 elif page == "Dashboard":
     page_header("Job Pal · Techturi", "Your <em>pipeline.</em>")
 
-    apps = get_all_applications()
+    apps = safe_get_apps()
     if not apps:
         st.info("No applications tracked yet. Run the pipeline to get started.")
         st.stop()
@@ -386,7 +401,7 @@ elif page == "Review Queue":
     page_header("Review Queue", "Jobs worth <em>applying to.</em>")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Scored 7+ by Claude Haiku · Actions update Supabase immediately</div>', unsafe_allow_html=True)
 
-    queue = get_review_queue(min_score=7)
+    queue = safe_get_queue(min_score=7)
     if not queue:
         st.success("Queue is empty — nothing to review.")
         st.stop()
@@ -404,7 +419,7 @@ elif page == "Applied":
     page_header("Applied", "In their <em>inbox.</em>")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Jobs you\'ve submitted — cover letters, details, and next-step controls</div>', unsafe_allow_html=True)
 
-    apps = get_all_applications()
+    apps = safe_get_apps()
     applied = [a for a in apps if a.get("status") == "applied"]
 
     if not applied:
@@ -430,7 +445,7 @@ elif page == "Interviews":
     page_header("Interviews", "You're in the <em>room.</em>")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Active interview pipeline — review your cover letter, prep, and track outcomes</div>', unsafe_allow_html=True)
 
-    apps = get_all_applications()
+    apps = safe_get_apps()
     interviews = [a for a in apps if a.get("status") == "interview"]
 
     if not interviews:
@@ -449,7 +464,7 @@ elif page == "Interviews":
 elif page == "All Applications":
     page_header("All Applications", "Full <em>history.</em>")
 
-    apps = get_all_applications()
+    apps = safe_get_apps()
     if not apps:
         st.info("No applications tracked yet.")
         st.stop()
@@ -566,12 +581,15 @@ elif page == "Run Pipeline":
             st.dataframe(preview, use_container_width=True, hide_index=True)
 
     st.markdown('<div class="section-label" style="margin-top:36px">Current Stats</div>', unsafe_allow_html=True)
-    apps = get_all_applications()
-    if apps:
-        df = pd.DataFrame(apps)
-        c1, c2, c3 = st.columns(3)
-        metric(c1, "Total Tracked", len(df))
-        metric(c2, "In Queue",      len(df[df["status"] == "new"]), "awaiting review")
-        metric(c3, "Applied",       len(df[df["status"] == "applied"]), accent=True)
-    else:
-        st.info("No data yet — run the pipeline to get started.")
+    try:
+        apps = safe_get_apps()
+        if apps:
+            df = pd.DataFrame(apps)
+            c1, c2, c3 = st.columns(3)
+            metric(c1, "Total Tracked", len(df))
+            metric(c2, "In Queue",      len(df[df["status"] == "new"]), "awaiting review")
+            metric(c3, "Applied",       len(df[df["status"] == "applied"]), accent=True)
+        else:
+            st.info("No data yet — run the pipeline to get started.")
+    except Exception as e:
+        st.warning(f"Could not load stats — check Supabase connection. ({e})")
