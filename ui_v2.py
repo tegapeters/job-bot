@@ -210,9 +210,15 @@ with st.sidebar:
     <div class="tt-product">Job Pal</div>
     """, unsafe_allow_html=True)
 
+    # Show resume status in sidebar
+    if st.session_state.get("resume_text"):
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#D4FF3A;letter-spacing:0.15em;padding:0 20px 12px">✓ RESUME LOADED</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#ff6b6b;letter-spacing:0.15em;padding:0 20px 12px">⚠ NO RESUME — START HERE</div>', unsafe_allow_html=True)
+
     page = st.radio(
         "Navigate",
-        ["Setup", "Dashboard", "Review Queue", "Applied", "Interviews", "All Applications", "Run Pipeline"],
+        ["Setup", "Run Pipeline", "Review Queue", "Applied", "Interviews", "Dashboard", "All Applications"],
         label_visibility="collapsed",
     )
 
@@ -311,11 +317,25 @@ BETA_JOB_LIMIT = 50  # max jobs scored per pipeline run for beta users
 # SETUP — resume onboarding (required before pipeline runs)
 # ═══════════════════════════════════════════════════════════════════
 if page == "Setup":
-    page_header("Setup", "Tell us about <em>you.</em>")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Your resume is used to score job fit and write cover letters. It stays in your session only — never stored.</div>', unsafe_allow_html=True)
+    page_header("Setup", "Start <em>here.</em>")
+
+    # ── How it works ─────────────────────────────────────────────
+    st.markdown("""
+    <div class="pipeline-card" style="margin-bottom:24px">
+      <h4>How Job Pal works</h4>
+      <p>
+        1. Paste your resume below — Job Pal uses it to score every job 1–10 for fit.<br><br>
+        2. Go to <b>Run Pipeline</b> — it scrapes LinkedIn, Indeed, Remotive, and more, then Claude AI scores each job against your background and writes a custom cover letter for every match scoring 7+.<br><br>
+        3. Review your matches in <b>Review Queue</b>, move jobs through <b>Applied → Interviews</b>, and track everything on the <b>Dashboard</b>.
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Refresh warning ──────────────────────────────────────────
+    st.warning("**Beta note:** Your resume is stored in this browser session only. If you refresh the page you will need to re-paste it here. This will be fixed in a future update.")
 
     with st.form("resume_form"):
-        st.markdown('<div class="section-label">Your Resume</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Your Resume — paste as plain text</div>', unsafe_allow_html=True)
         resume_input = st.text_area(
             "Paste your resume here",
             value=st.session_state.get("resume_text", ""),
@@ -324,7 +344,7 @@ if page == "Setup":
             label_visibility="collapsed",
         )
 
-        st.markdown('<div class="section-label" style="margin-top:20px">Target Roles (one per line)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
         default_roles = "\n".join(st.session_state.get("target_roles", [
             "Senior Business Analyst",
             "Data Engineer",
@@ -338,7 +358,7 @@ if page == "Setup":
             label_visibility="collapsed",
         )
 
-        submitted = st.form_submit_button("Save & Continue →", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Save & Go to Pipeline →", type="primary", use_container_width=True)
 
     if submitted:
         if len(resume_input.strip()) < 100:
@@ -346,14 +366,15 @@ if page == "Setup":
         else:
             st.session_state["resume_text"] = resume_input.strip()
             st.session_state["target_roles"] = [r.strip() for r in roles_input.splitlines() if r.strip()]
-            st.success("Saved. Head to Run Pipeline to score jobs against your resume.")
+            st.success("✓ Resume saved. Click **Run Pipeline** in the sidebar to find your jobs.")
 
     if st.session_state.get("resume_text"):
-        st.markdown('<div class="section-label" style="margin-top:28px">Current Resume Preview</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label" style="margin-top:28px">Resume Preview — currently loaded</div>', unsafe_allow_html=True)
         st.markdown(
             f'<div class="cover-letter">{st.session_state["resume_text"][:600]}{"..." if len(st.session_state["resume_text"]) > 600 else ""}</div>',
             unsafe_allow_html=True,
         )
+        st.caption("To update your resume, paste a new version above and hit Save again.")
 
 
 elif page == "Dashboard":
@@ -554,15 +575,19 @@ elif page == "Run Pipeline":
             if not new_jobs:
                 st.success("Nothing new to score. Queue is up to date.")
             else:
-                with st.spinner(f"Scoring {len(new_jobs)} jobs with Claude Haiku..."):
-                    from agent import process_jobs
-                    all_scored, qualified = process_jobs(new_jobs, verbose=False, resume_text=resume_text)
+                st.info(f"Scoring {len(new_jobs)} jobs — this takes 1–3 minutes. Don't close the tab.")
+                progress = st.progress(0, text="Starting AI scoring...")
 
-                with st.spinner("Saving to Supabase..."):
-                    from tracker import upsert_jobs
-                    upsert_jobs(all_scored)
+                progress.progress(10, text=f"Scoring {len(new_jobs)} jobs with Claude Haiku...")
+                from agent import process_jobs
+                all_scored, qualified = process_jobs(new_jobs, verbose=False, resume_text=resume_text)
 
-                st.success(f"Done — {len(qualified)} jobs scored 7+ added to review queue.")
+                progress.progress(80, text=f"Writing cover letters for {len(qualified)} qualified jobs...")
+                from tracker import upsert_jobs
+                upsert_jobs(all_scored)
+
+                progress.progress(100, text="Done.")
+                st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored 7+ added to Review Queue.")
 
                 if qualified:
                     st.markdown('<div class="section-label" style="margin-top:20px">Qualified Jobs</div>', unsafe_allow_html=True)
