@@ -13,6 +13,7 @@ from tracker import (
     get_all_applications, get_review_queue,
     update_status, get_seen_ids,
 )
+from sessions import save_session, load_session, new_uid
 
 # ── Page config ────────────────────────────────────────────────────
 st.set_page_config(
@@ -186,6 +187,20 @@ st.markdown("""
     margin: 0 !important;
   }
 
+  /* ── Primary buttons — toned down ── */
+  [data-testid="baseButton-primary"] {
+    background: #1a2a00 !important;
+    color: #D4FF3A !important;
+    border: 1px solid #D4FF3A !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important;
+    letter-spacing: 0.1em !important;
+  }
+  [data-testid="baseButton-primary"]:hover {
+    background: #243800 !important;
+    border-color: #D4FF3A !important;
+  }
+
   /* ── Footer ── */
   .tt-footer {
     font-family: 'JetBrains Mono', monospace;
@@ -200,6 +215,31 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+# ── Session persistence: restore from ?uid= query param ───────────
+def _try_restore_session():
+    """On first load, if ?uid= is in the URL, pull resume from Supabase."""
+    if st.session_state.get("_session_restored"):
+        return  # already ran this run
+    st.session_state["_session_restored"] = True
+
+    uid = st.query_params.get("uid")
+    if not uid:
+        return
+    if st.session_state.get("resume_text"):
+        return  # already have resume in memory
+
+    try:
+        data = load_session(uid)
+        if data and data.get("resume_text"):
+            st.session_state["resume_text"] = data["resume_text"]
+            st.session_state["session_uid"] = uid
+            if data.get("target_roles"):
+                st.session_state["target_roles"] = data["target_roles"]
+    except Exception:
+        pass  # silently skip — DB down or uid not found
+
+_try_restore_session()
 
 # ── Sidebar: Techturi-branded nav ──────────────────────────────────
 with st.sidebar:
@@ -332,7 +372,10 @@ if page == "Setup":
     """, unsafe_allow_html=True)
 
     # ── Refresh warning ──────────────────────────────────────────
-    st.warning("**Beta note:** Your resume is stored in this browser session only. If you refresh you will need to re-upload or re-paste it. This will be fixed in a future update.")
+    if st.session_state.get("session_uid"):
+        st.success("✓ Your resume is saved. Bookmark this URL — it will reload your resume automatically on return.")
+    else:
+        st.info("Upload or paste your resume below, then hit **Save**. Job Pal will generate a personal link that reloads your resume on future visits.")
 
     # ── Resume input: upload or paste ────────────────────────────
     st.markdown('<div class="section-label">Your Resume</div>', unsafe_allow_html=True)
@@ -379,6 +422,39 @@ if page == "Setup":
         if pasted.strip():
             extracted_text = pasted.strip()
 
+    # ── Salary preference ────────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:20px">Minimum Salary (optional)</div>', unsafe_allow_html=True)
+    salary_options = [
+        "No minimum",
+        "$80,000+",
+        "$100,000+",
+        "$120,000+",
+        "$140,000+",
+        "$160,000+",
+        "$180,000+",
+        "$200,000+",
+        "$220,000+",
+    ]
+    salary_map = {
+        "No minimum": 0,
+        "$80,000+": 80_000,
+        "$100,000+": 100_000,
+        "$120,000+": 120_000,
+        "$140,000+": 140_000,
+        "$160,000+": 160_000,
+        "$180,000+": 180_000,
+        "$200,000+": 200_000,
+        "$220,000+": 220_000,
+    }
+    current_min = st.session_state.get("min_salary", 140_000)
+    current_label = next((k for k, v in salary_map.items() if v == current_min), "$140,000+")
+    selected_salary = st.selectbox(
+        "Minimum salary",
+        salary_options,
+        index=salary_options.index(current_label),
+        label_visibility="collapsed",
+    )
+
     # ── Target roles ─────────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
     default_roles = "\n".join(st.session_state.get("target_roles", [
@@ -398,9 +474,26 @@ if page == "Setup":
         if not extracted_text or len(extracted_text.strip()) < 100:
             st.error("Resume looks too short or empty — upload a file or paste your resume text.")
         else:
-            st.session_state["resume_text"] = extracted_text.strip()
-            st.session_state["target_roles"] = [r.strip() for r in roles_input.splitlines() if r.strip()]
-            st.success("✓ Resume saved. Click **Run Pipeline** in the sidebar to find your jobs.")
+            clean_text = extracted_text.strip()
+            roles = [r.strip() for r in roles_input.splitlines() if r.strip()]
+            st.session_state["resume_text"] = clean_text
+            st.session_state["target_roles"] = roles
+            st.session_state["min_salary"] = salary_map[selected_salary]
+
+            # Persist to Supabase so the resume survives page refresh
+            uid = st.session_state.get("session_uid") or new_uid()
+            try:
+                save_session(uid, clean_text, roles)
+                st.session_state["session_uid"] = uid
+                st.query_params["uid"] = uid
+                st.success(
+                    f"✓ Resume saved. Bookmark this page — your resume will reload automatically. "
+                    f"Click **Run Pipeline** to start."
+                )
+            except Exception as e:
+                # DB write failed — session still works in memory this tab
+                st.success("✓ Resume saved for this session. Click **Run Pipeline** to start.")
+                st.caption(f"(Persistence unavailable: {e})")
 
     if st.session_state.get("resume_text"):
         st.markdown('<div class="section-label" style="margin-top:28px">Currently Loaded Resume</div>', unsafe_allow_html=True)
@@ -581,7 +674,9 @@ elif page == "Run Pipeline":
         st.warning("No resume loaded. Go to **Setup** and paste your resume first — the pipeline uses it to score job fit.")
         st.stop()
 
-    st.markdown(f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#4A4A45;margin-bottom:20px">Beta limit: {BETA_JOB_LIMIT} jobs per run · Resume loaded ✓</div>', unsafe_allow_html=True)
+    min_salary = st.session_state.get("min_salary", 0)
+    salary_label = f"${min_salary:,}+" if min_salary else "no minimum"
+    st.markdown(f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#4A4A45;margin-bottom:20px">Beta limit: {BETA_JOB_LIMIT} jobs per run · Resume loaded ✓ · Salary filter: {salary_label}</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
