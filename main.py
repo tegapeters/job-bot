@@ -98,6 +98,17 @@ CREATE TABLE IF NOT EXISTS job_applications (
 
 CREATE INDEX IF NOT EXISTS idx_job_applications_score ON job_applications(score DESC);
 CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications(status);
+
+CREATE TABLE IF NOT EXISTS application_events (
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  job_id     TEXT REFERENCES job_applications(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,
+  detail     TEXT DEFAULT '',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_application_events_job_id ON application_events(job_id);
+CREATE INDEX IF NOT EXISTS idx_application_events_type ON application_events(event_type);
 """
     print(sql)
     print("Copy the above SQL and run it in: https://supabase.com/dashboard/project/mokqyqgdjtxtstrviorr/sql")

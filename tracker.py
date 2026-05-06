@@ -46,6 +46,38 @@ def update_status(job_id: str, status: str):
     sb.table("job_applications").update({"status": status}).eq("id", job_id).execute()
 
 
+def log_event(job_id: str, event_type: str, detail: str = ""):
+    """
+    Append an outcome/feedback event for a job.
+    Safe no-op if the table does not exist yet.
+    """
+    sb = get_client()
+    try:
+        sb.table("application_events").insert({
+            "job_id": job_id,
+            "event_type": event_type,
+            "detail": detail,
+        }).execute()
+    except Exception:
+        # Keep core UX unblocked if events table is missing.
+        pass
+
+
+def get_event_counts() -> dict[str, int]:
+    """Return event counts by type for dashboard analytics."""
+    sb = get_client()
+    try:
+        result = sb.table("application_events").select("event_type").execute()
+    except Exception:
+        return {}
+
+    counts: dict[str, int] = {}
+    for row in (result.data or []):
+        key = row.get("event_type") or "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def get_review_queue(min_score: int = 7) -> list[dict]:
     """Fetch jobs pending review, deduped by (title, company)."""
     sb = get_client()

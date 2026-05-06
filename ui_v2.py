@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from tracker import (
     get_all_applications, get_review_queue,
-    update_status, get_seen_ids,
+    update_status, get_seen_ids, log_event, get_event_counts,
 )
 from sessions import save_session, load_session, new_uid
 
@@ -321,8 +321,26 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             if new_status != "— no change —":
                 if st.button("Save", key=f"{key_prefix}_save_{job['id']}", type="primary"):
                     update_status(job["id"], new_status)
+                    log_event(job["id"], "status_change", f"{job.get('status', 'unknown')} -> {new_status}")
                     st.success(f"→ {new_status}")
                     st.rerun()
+
+        st.markdown('<div class="section-label" style="margin-top:16px">Outcome Signal</div>', unsafe_allow_html=True)
+        signal = st.selectbox(
+            "Log outcome",
+            ["— none —", "applied", "recruiter_response", "interview_scheduled", "rejected", "no_response_14d"],
+            key=f"{key_prefix}_signal_{job['id']}",
+        )
+        if signal != "— none —":
+            note = st.text_input(
+                "Optional note",
+                key=f"{key_prefix}_signal_note_{job['id']}",
+                placeholder="e.g. recruiter replied in 2 days",
+            )
+            if st.button("Log Signal", key=f"{key_prefix}_signal_save_{job['id']}"):
+                log_event(job["id"], signal, note.strip())
+                st.success(f"Logged outcome: {signal}")
+                st.rerun()
 
         if job.get("cover_letter"):
             st.markdown("**Cover Letter**")
@@ -539,6 +557,11 @@ elif page == "Dashboard":
         if status_counts:
             st.bar_chart(pd.Series(status_counts), color="#D4FF3A")
 
+    event_counts = get_event_counts()
+    if event_counts:
+        st.markdown('<div class="section-label" style="margin-top:28px">Outcome Signals</div>', unsafe_allow_html=True)
+        st.bar_chart(pd.Series(event_counts), color="#D4FF3A")
+
     st.markdown('<div class="section-label" style="margin-top:28px">Top 10 by Score</div>', unsafe_allow_html=True)
     top = df.nlargest(10, "score")[["title", "company", "location", "score", "score_reason", "status"]]
     st.dataframe(top, use_container_width=True, hide_index=True)
@@ -685,6 +708,25 @@ elif page == "Run Pipeline":
     with col1:
         st.markdown('<div class="pipeline-card"><h4>Full Pipeline</h4><p>Scrape all sources → AI scores every job for fit → generates a custom cover letter for every match scoring 7+</p></div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
+        scoring_mode = st.selectbox(
+            "Scoring mode",
+            ["cheap", "hybrid", "claude"],
+            index=0,
+            help="cheap = no LLM cost, hybrid = cheap pre-filter + Claude, claude = best quality/highest cost",
+        )
+        hybrid_min = st.slider(
+            "Hybrid Claude threshold",
+            min_value=1,
+            max_value=10,
+            value=6,
+            disabled=(scoring_mode != "hybrid"),
+            help="In hybrid mode, jobs at or above this cheap-score are escalated to Claude.",
+        )
+        enable_letters = st.checkbox(
+            "Generate cover letters",
+            value=(scoring_mode != "cheap"),
+            help="Turn off to avoid extra model calls during testing.",
+        )
         if st.button("▶ Run Full Pipeline", type="primary", use_container_width=True):
             with st.spinner("Scraping jobs..."):
                 from scrapers import scrape_all
@@ -711,7 +753,14 @@ elif page == "Run Pipeline":
 
                 progress.progress(10, text=f"Analyzing {len(new_jobs)} jobs against your resume...")
                 from agent import process_jobs
-                all_scored, qualified = process_jobs(new_jobs, verbose=False, resume_text=resume_text)
+                all_scored, qualified = process_jobs(
+                    new_jobs,
+                    verbose=False,
+                    resume_text=resume_text,
+                    scoring_backend=scoring_mode,
+                    enable_cover_letters=enable_letters,
+                    hybrid_claude_min_score=hybrid_min,
+                )
 
                 progress.progress(80, text=f"Writing cover letters for {len(qualified)} qualified jobs...")
                 from tracker import upsert_jobs

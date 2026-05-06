@@ -150,6 +150,14 @@ SUPABASE_KEY = (
 # ── Anthropic ───────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
+# ── Scoring backend strategy ────────────────────────────────────────
+# claude = current behavior (best quality, highest cost)
+# cheap  = heuristic-only local scoring (lowest cost)
+# hybrid = cheap pre-filter + Claude for stronger candidates
+SCORING_BACKEND = os.getenv("SCORING_BACKEND", "claude").strip().lower()
+HYBRID_CLAUDE_MIN_SCORE = int(os.getenv("HYBRID_CLAUDE_MIN_SCORE", "6"))
+ENABLE_COVER_LETTERS = os.getenv("ENABLE_COVER_LETTERS", "1").strip().lower() in {"1", "true", "yes", "y"}
+
 # ── Auto-apply threshold ────────────────────────────────────────────
 # Jobs scoring >= this are queued for review; set to 11 to disable auto-apply
 AUTO_APPLY_MIN_SCORE = 11   # 11 = review-first mode (recommended)
