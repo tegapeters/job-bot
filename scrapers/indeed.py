@@ -3,6 +3,7 @@ Indeed RSS scraper — pulls job listings for target roles
 """
 import feedparser
 import hashlib
+import re
 from datetime import datetime
 from config import TARGET_ROLES, LOCATIONS_REMOTE, LOCATIONS_HYBRID, LOCATIONS_ONSITE, MIN_SALARY, EXCLUDE_KEYWORDS
 
@@ -11,7 +12,11 @@ INDEED_RSS = "https://www.indeed.com/rss?q={query}&l={location}&sort=date&fromag
 
 
 def _make_id(url: str) -> str:
-    return hashlib.md5(url.encode()).hexdigest()[:16]
+    # Use the `jk` param (Indeed's job key) as the stable identifier.
+    # Falls back to full-URL hash if jk is absent.
+    m = re.search(r'[?&]jk=([a-zA-Z0-9]+)', url)
+    key = f"indeed_{m.group(1)}" if m else url
+    return hashlib.md5(key.encode()).hexdigest()[:16]
 
 
 def _is_excluded(title: str, summary: str) -> bool:

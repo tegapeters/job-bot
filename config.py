@@ -153,4 +153,5 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 # ── Auto-apply threshold ────────────────────────────────────────────
 # Jobs scoring >= this are queued for review; set to 11 to disable auto-apply
 AUTO_APPLY_MIN_SCORE = 11   # 11 = review-first mode (recommended)
-REVIEW_MIN_SCORE = 7        # Only surface jobs scoring 7+
+REVIEW_MIN_SCORE = 7        # Surface jobs scoring 7+ in review queue
+COVER_LETTER_MIN_SCORE = 8  # Only generate cover letters for 8+ (strong leads)

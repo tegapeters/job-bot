@@ -47,7 +47,7 @@ def update_status(job_id: str, status: str):
 
 
 def get_review_queue(min_score: int = 7) -> list[dict]:
-    """Fetch jobs pending review."""
+    """Fetch jobs pending review, deduped by (title, company)."""
     sb = get_client()
     result = (
         sb.table("job_applications")
@@ -57,7 +57,20 @@ def get_review_queue(min_score: int = 7) -> list[dict]:
         .order("score", desc=True)
         .execute()
     )
-    return result.data or []
+    rows = result.data or []
+
+    # Deduplicate by (normalized title, normalized company).
+    # When the same job appears on multiple sources, keep the highest-scored copy.
+    seen: dict[tuple, dict] = {}
+    for row in rows:
+        key = (
+            (row.get("title") or "").lower().strip(),
+            (row.get("company") or "").lower().strip(),
+        )
+        if key not in seen or (row.get("score") or 0) > (seen[key].get("score") or 0):
+            seen[key] = row
+
+    return list(seen.values())
 
 
 def get_manual_queue() -> list[dict]:

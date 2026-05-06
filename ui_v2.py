@@ -133,11 +133,12 @@ st.markdown("""
     text-transform: uppercase;
     margin-right: 4px;
   }
-  .tag-new       { background: #1a1f0a; color: #D4FF3A; border: 1px solid #2a3510; }
-  .tag-applied   { background: #0a1a1f; color: #3ad4ff; border: 1px solid #102a35; }
-  .tag-interview { background: #1a0f1a; color: #d43aff; border: 1px solid #2a1035; }
-  .tag-rejected  { background: #1f0a0a; color: #ff3a3a; border: 1px solid #350f0f; }
-  .tag-skipped   { background: #1a1a1a; color: #666; border: 1px solid #333; }
+  .tag-new                { background: #1a1f0a; color: #D4FF3A; border: 1px solid #2a3510; }
+  .tag-applied            { background: #0a1a1f; color: #3ad4ff; border: 1px solid #102a35; }
+  .tag-interview          { background: #1a0f1a; color: #d43aff; border: 1px solid #2a1035; }
+  .tag-rejected           { background: #1f0a0a; color: #ff3a3a; border: 1px solid #350f0f; }
+  .tag-skipped            { background: #1a1a1a; color: #666; border: 1px solid #333; }
+  .tag-application_closed { background: #1a1208; color: #ff9a3a; border: 1px solid #352010; }
 
   /* ── Cover letter block ── */
   .cover-letter {
@@ -273,8 +274,9 @@ def score_badge(score):
     return f'<span class="{cls}">{score}/10</span>'
 
 def status_tag(status):
-    cls = f"tag tag-{status}" if status in ("new","applied","interview","rejected","skipped") else "tag"
-    return f'<span class="{cls}">{status}</span>'
+    cls = f"tag tag-{status}" if status in ("new","applied","interview","rejected","skipped","application_closed") else "tag"
+    label = "closed" if status == "application_closed" else status
+    return f'<span class="{cls}">{label}</span>'
 
 def safe_get_apps():
     """Fetch all applications, showing a clean error if Supabase is unreachable."""
@@ -583,7 +585,7 @@ elif page == "Applied":
                    search.lower() in (a.get("company") or "").lower()]
 
     for job in sorted(applied, key=lambda x: x.get("score") or 0, reverse=True):
-        job_card(job, "ap", ["interview", "rejected", "skipped"])
+        job_card(job, "ap", ["interview", "rejected", "skipped", "application_closed"])
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -603,7 +605,7 @@ elif page == "Interviews":
     st.markdown(f'<div class="section-label">{len(interviews)} active interview{"s" if len(interviews) != 1 else ""}</div>', unsafe_allow_html=True)
 
     for job in sorted(interviews, key=lambda x: x.get("score") or 0, reverse=True):
-        job_card(job, "iv", ["rejected", "skipped"], expanded=True)
+        job_card(job, "iv", ["rejected", "skipped", "application_closed"], expanded=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -655,7 +657,7 @@ elif page == "All Applications":
     if job_options:
         selected_label = st.selectbox("Select job", list(job_options.keys()))
         selected_id = job_options[selected_label]
-        new_status = st.selectbox("New status", ["new", "applied", "interview", "rejected", "skipped"])
+        new_status = st.selectbox("New status", ["new", "applied", "interview", "rejected", "skipped", "application_closed"])
         if st.button("Update Status", type="primary"):
             update_status(selected_id, new_status)
             st.success(f"Updated → {new_status}")
