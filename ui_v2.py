@@ -564,16 +564,18 @@ if page == "Setup":
     # ── Target roles ─────────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
     default_roles = "\n".join(st.session_state.get("target_roles", [
-        "Senior Data Engineer",
         "Data Engineer",
         "AI Engineer",
         "Senior AI Engineer",
         "GenAI Engineer",
         "Machine Learning Engineer",
         "Senior ML Engineer",
+        "Analytics Engineer",
+        "Senior Analytics Engineer",
+        "Senior Data Analyst",
+        "Senior Business Intelligence Engineer",
         "Senior Technical Program Manager",
         "Technical Project Manager",
-        "Business Systems Analyst",
     ]))
     roles_input = st.text_area(
         "Target roles",
