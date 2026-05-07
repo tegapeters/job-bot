@@ -78,6 +78,52 @@ def get_event_counts() -> dict[str, int]:
     return counts
 
 
+def log_experiment_run(
+    run_label: str,
+    scoring_mode: str,
+    hybrid_threshold: int,
+    cover_letters_enabled: bool,
+    jobs_scraped: int,
+    jobs_new: int,
+    jobs_qualified: int,
+    note: str = "",
+):
+    """
+    Persist one pipeline experiment run.
+    Safe no-op if the table does not exist yet.
+    """
+    sb = get_client()
+    try:
+        sb.table("pipeline_runs").insert({
+            "run_label": run_label,
+            "scoring_mode": scoring_mode,
+            "hybrid_threshold": hybrid_threshold,
+            "cover_letters_enabled": bool(cover_letters_enabled),
+            "jobs_scraped": int(jobs_scraped),
+            "jobs_new": int(jobs_new),
+            "jobs_qualified": int(jobs_qualified),
+            "note": note or "",
+        }).execute()
+    except Exception:
+        pass
+
+
+def get_recent_runs(limit: int = 10) -> list[dict]:
+    """Fetch recent experiment runs for comparison."""
+    sb = get_client()
+    try:
+        result = (
+            sb.table("pipeline_runs")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception:
+        return []
+
+
 def get_review_queue(min_score: int = 7) -> list[dict]:
     """Fetch jobs pending review, deduped by (title, company)."""
     sb = get_client()

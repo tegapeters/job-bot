@@ -2,6 +2,7 @@
 Job Pal — Streamlit UI v2 (Techturi branded)
 Run: streamlit run ui_v2.py
 """
+import io
 import streamlit as st
 import pandas as pd
 import sys
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from tracker import (
     get_all_applications, get_review_queue,
     update_status, get_seen_ids, log_event, get_event_counts,
+    log_experiment_run, get_recent_runs,
 )
 from sessions import save_session, load_session, new_uid
 
@@ -368,6 +370,39 @@ def metric(col, label, value, sub="", accent=False):
     </div>""", unsafe_allow_html=True)
 
 
+def _boolish(v) -> bool:
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    return str(v).lower() in ("true", "1", "t", "yes")
+
+
+def enrich_experiment_runs_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Add qualified_pct and human-readable cost_mode for experiment comparison."""
+    if df.empty:
+        return df
+    out = df.copy()
+
+    def qualified_pct_row(row):
+        new = int(row.get("jobs_new") or 0)
+        q = int(row.get("jobs_qualified") or 0)
+        return round(100.0 * q / new, 1) if new else None
+
+    def cost_mode_row(row):
+        mode = str(row.get("scoring_mode") or "").lower().strip()
+        letters = _boolish(row.get("cover_letters_enabled"))
+        if mode == "cheap":
+            return "No LLM"
+        if mode == "hybrid":
+            return "Hybrid + letters" if letters else "Hybrid (score only)"
+        return "Claude + letters" if letters else "Claude (score only)"
+
+    out["qualified_pct"] = out.apply(qualified_pct_row, axis=1)
+    out["cost_mode"] = out.apply(cost_mode_row, axis=1)
+    return out
+
+
 # ═══════════════════════════════════════════════════════════════════
 # DASHBOARD
 # ═══════════════════════════════════════════════════════════════════
@@ -708,6 +743,18 @@ elif page == "Run Pipeline":
     with col1:
         st.markdown('<div class="pipeline-card"><h4>Full Pipeline</h4><p>Scrape all sources → AI scores every job for fit → generates a custom cover letter for every match scoring 7+</p></div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
+        run_label = st.text_input(
+            "Run label",
+            value="",
+            placeholder="e.g. cheap-baseline-may06",
+            help="Optional name to compare this run with others.",
+        )
+        run_note = st.text_area(
+            "Run note",
+            value="",
+            height=80,
+            placeholder="Optional notes (query changes, expectations, observations).",
+        )
         scoring_mode = st.selectbox(
             "Scoring mode",
             ["cheap", "hybrid", "claude"],
@@ -766,6 +813,17 @@ elif page == "Run Pipeline":
                 from tracker import upsert_jobs
                 upsert_jobs(all_scored)
 
+                log_experiment_run(
+                    run_label=run_label.strip(),
+                    scoring_mode=scoring_mode,
+                    hybrid_threshold=hybrid_min,
+                    cover_letters_enabled=enable_letters,
+                    jobs_scraped=len(jobs),
+                    jobs_new=len(new_jobs),
+                    jobs_qualified=len(qualified),
+                    note=run_note.strip(),
+                )
+
                 progress.progress(100, text="Done.")
                 st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored 7+ added to Review Queue.")
 
@@ -798,3 +856,38 @@ elif page == "Run Pipeline":
             st.info("No data yet — run the pipeline to get started.")
     except Exception as e:
         st.warning(f"Could not load stats — check Supabase connection. ({e})")
+
+    recent_runs = get_recent_runs(limit=8)
+    if recent_runs:
+        st.markdown('<div class="section-label" style="margin-top:24px">Recent Experiment Runs</div>', unsafe_allow_html=True)
+        run_df = enrich_experiment_runs_df(pd.DataFrame(recent_runs))
+        keep_cols = [
+            "created_at", "run_label", "cost_mode", "scoring_mode", "hybrid_threshold",
+            "cover_letters_enabled", "jobs_scraped", "jobs_new", "jobs_qualified",
+            "qualified_pct", "note",
+        ]
+        cols = [c for c in keep_cols if c in run_df.columns]
+        display_df = run_df[cols].copy()
+        if "qualified_pct" in display_df.columns:
+            display_df["qualified_pct"] = display_df["qualified_pct"].apply(
+                lambda x: f"{x}%" if x is not None and pd.notna(x) else "—"
+            )
+        with_sub = run_df[run_df["jobs_new"].fillna(0) > 0]
+        if not with_sub.empty and with_sub["qualified_pct"].notna().any():
+            best = with_sub.loc[with_sub["qualified_pct"].idxmax()]
+            lbl = best.get("run_label") or "(no label)"
+            st.caption(
+                f"Best qualified rate in this list: **{lbl}** — "
+                f"{best['qualified_pct']}% qualified "
+                f"({int(best.get('jobs_qualified') or 0)}/{int(best.get('jobs_new') or 0)} new jobs)"
+            )
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        csv_buf = io.StringIO()
+        run_df.to_csv(csv_buf, index=False)
+        st.download_button(
+            "Download recent runs (CSV)",
+            csv_buf.getvalue(),
+            file_name="pipeline_runs_recent.csv",
+            mime="text/csv",
+            key="download_pipeline_runs_csv",
+        )

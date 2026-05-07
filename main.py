@@ -109,6 +109,21 @@ CREATE TABLE IF NOT EXISTS application_events (
 
 CREATE INDEX IF NOT EXISTS idx_application_events_job_id ON application_events(job_id);
 CREATE INDEX IF NOT EXISTS idx_application_events_type ON application_events(event_type);
+
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+  id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  run_label             TEXT,
+  scoring_mode          TEXT NOT NULL,
+  hybrid_threshold      INTEGER DEFAULT 6,
+  cover_letters_enabled BOOLEAN DEFAULT FALSE,
+  jobs_scraped          INTEGER DEFAULT 0,
+  jobs_new              INTEGER DEFAULT 0,
+  jobs_qualified        INTEGER DEFAULT 0,
+  note                  TEXT DEFAULT '',
+  created_at            TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_created_at ON pipeline_runs(created_at DESC);
 """
     print(sql)
     print("Copy the above SQL and run it in: https://supabase.com/dashboard/project/mokqyqgdjtxtstrviorr/sql")
