@@ -26,18 +26,14 @@ def _is_excluded(title: str, desc: str) -> bool:
     return any(kw in text for kw in EXCLUDE_KEYWORDS)
 
 
-def _matches_target(title: str) -> bool:
+def _matches_target(title: str, target_roles: list[str] = None) -> bool:
     t = title.lower()
-    keywords = [
-        "data scientist", "business analyst", "business systems",
-        "data engineer", "ml engineer", "machine learning",
-        "ai engineer", "technical project", "project manager",
-        "analytics engineer",
-    ]
+    roles = target_roles if target_roles else TARGET_ROLES
+    keywords = [r.lower() for r in roles]
     return any(k in t for k in keywords)
 
 
-def scrape_remotive() -> list[dict]:
+def scrape_remotive(target_roles: list[str] = None) -> list[dict]:
     jobs = []
     seen = set()
 
@@ -52,7 +48,7 @@ def scrape_remotive() -> list[dict]:
                 desc = j.get("description", "")
                 url = j.get("url", "")
 
-                if not _matches_target(title):
+                if not _matches_target(title, target_roles=target_roles):
                     continue
                 if _is_excluded(title, desc):
                     continue

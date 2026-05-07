@@ -27,9 +27,10 @@ def _make_id(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:16]
 
 
-def _matches_target(title: str) -> bool:
+def _matches_target(title: str, target_roles: list[str] = None) -> bool:
     t = title.lower()
-    return any(k in t for k in TITLE_KEYWORDS)
+    keywords = [r.lower() for r in target_roles] if target_roles else [k.lower() for k in TITLE_KEYWORDS]
+    return any(k in t for k in keywords)
 
 
 def _is_excluded(title: str, summary: str) -> bool:
@@ -37,7 +38,7 @@ def _is_excluded(title: str, summary: str) -> bool:
     return any(kw in text for kw in EXCLUDE_KEYWORDS)
 
 
-def scrape_weworkremotely() -> list[dict]:
+def scrape_weworkremotely(target_roles: list[str] = None) -> list[dict]:
     jobs = []
     seen = set()
 
@@ -50,7 +51,7 @@ def scrape_weworkremotely() -> list[dict]:
                 if ": " in title:
                     title = title.split(": ", 1)[1]
 
-                if not _matches_target(title):
+                if not _matches_target(title, target_roles=target_roles):
                     continue
 
                 url = entry.get("link", "")

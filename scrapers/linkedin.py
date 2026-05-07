@@ -112,11 +112,12 @@ def _parse_jobs_from_html(html: str, source_url: str) -> list[dict]:
     return jobs
 
 
-def scrape_linkedin(max_per_query: int = 15) -> list[dict]:
+def scrape_linkedin(max_per_query: int = 15, target_roles: list[str] = None) -> list[dict]:
     jobs = []
     seen = set()
+    roles = target_roles if target_roles else TARGET_ROLES
 
-    for role in TARGET_ROLES[:8]:  # top 8 roles
+    for role in roles:
         query = requests.utils.quote(role)
         for wt_name, wt_code in WORK_TYPES.items():
             if wt_name == "onsite":

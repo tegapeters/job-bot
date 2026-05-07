@@ -564,9 +564,16 @@ if page == "Setup":
     # ── Target roles ─────────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
     default_roles = "\n".join(st.session_state.get("target_roles", [
-        "Senior Business Analyst",
+        "Senior Data Engineer",
         "Data Engineer",
         "AI Engineer",
+        "Senior AI Engineer",
+        "GenAI Engineer",
+        "Machine Learning Engineer",
+        "Senior ML Engineer",
+        "Senior Technical Program Manager",
+        "Technical Project Manager",
+        "Business Systems Analyst",
     ]))
     roles_input = st.text_area(
         "Target roles",
@@ -893,7 +900,7 @@ elif page == "Run Pipeline":
         if st.button("▶ Run Full Pipeline", type="primary", use_container_width=True):
             with st.spinner("Scraping jobs..."):
                 from scrapers import scrape_all
-                jobs = scrape_all()
+                jobs = scrape_all(target_roles=st.session_state.get("target_roles") or None)
 
             st.info(f"Scraped {len(jobs)} jobs total")
 
@@ -954,7 +961,7 @@ elif page == "Run Pipeline":
         if st.button("▶ Scrape Only", use_container_width=True):
             with st.spinner("Scraping..."):
                 from scrapers import scrape_all
-                jobs = scrape_all()
+                jobs = scrape_all(target_roles=st.session_state.get("target_roles") or None)
             st.success(f"Scraped {len(jobs)} jobs")
             preview = pd.DataFrame(jobs[:20])[["title", "company", "location", "source"]]
             st.dataframe(preview, use_container_width=True, hide_index=True)

@@ -5,7 +5,7 @@ from .weworkremotely import scrape_weworkremotely
 from .jobicy import scrape_jobicy
 
 
-def scrape_all() -> list[dict]:
+def scrape_all(target_roles: list[str] = None) -> list[dict]:
     results = {}
 
     sources = [
@@ -19,7 +19,9 @@ def scrape_all() -> list[dict]:
     for name, fn in sources:
         try:
             print(f"🔍 Scraping {name}...")
-            jobs = fn()
+            import inspect
+            kwargs = {"target_roles": target_roles} if "target_roles" in inspect.signature(fn).parameters else {}
+            jobs = fn(**kwargs)
             results[name] = jobs
             print(f"   → {len(jobs)} jobs")
         except Exception as e:

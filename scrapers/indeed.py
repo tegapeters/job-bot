@@ -30,11 +30,11 @@ def _is_junior(title: str) -> bool:
     return any(s in t for s in junior_signals)
 
 
-def scrape_indeed(max_per_query: int = 20) -> list[dict]:
+def scrape_indeed(max_per_query: int = 20, target_roles: list[str] = None) -> list[dict]:
     jobs = []
     seen = set()
-
-    queries = [r.replace(" ", "+") for r in TARGET_ROLES]
+    roles = target_roles if target_roles else TARGET_ROLES
+    queries = [r.replace(" ", "+") for r in roles]
 
     # Build location list: remote/hybrid as "Remote", onsite across US cities
     all_locations = (

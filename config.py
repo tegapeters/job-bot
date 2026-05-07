@@ -4,18 +4,16 @@ Job Bot Configuration — Tega Eshareturi
 
 # ── Job Preferences ────────────────────────────────────────────────
 TARGET_ROLES = [
-    "Senior Business Analyst",
-    "Business Systems Analyst",
-    "Senior Business Systems Analyst",
-    "Technical Project Manager",
-    "Senior Technical Program Manager",
     "Senior Data Engineer",
     "Data Engineer",
     "AI Engineer",
     "Senior AI Engineer",
+    "GenAI Engineer",
     "Machine Learning Engineer",
     "Senior ML Engineer",
-    "GenAI Engineer",
+    "Senior Technical Program Manager",
+    "Technical Project Manager",
+    "Business Systems Analyst",
 ]
 
 LOCATIONS_REMOTE = ["Remote", "United States"]
