@@ -3,6 +3,7 @@ Job Pal — Streamlit UI v2 (Techturi branded)
 Run: streamlit run ui_v2.py
 """
 import io
+from datetime import datetime, timezone
 import streamlit as st
 import pandas as pd
 import sys
@@ -297,14 +298,29 @@ def safe_get_queue(min_score=8):
         st.error(f"Cannot connect to database. Check Supabase secrets. Error: `{e}`")
         st.stop()
 
+def _days_in_queue(job: dict) -> int | None:
+    raw = job.get("created_at")
+    if not raw:
+        return None
+    try:
+        created = datetime.fromisoformat(raw)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - created).days
+    except Exception:
+        return None
+
+
 def job_card(job, key_prefix, next_statuses, expanded=False):
     """Render a full job card with details, cover letter, and status controls."""
     score = job.get("score") or 0
     icon = "🟢" if score >= 8 else "🟡" if score >= 6 else "🔴"
     eff = job.get("_effective_score")
     title_suffix = f"  (rank {eff})" if eff is not None and eff != score else ""
+    days = _days_in_queue(job)
+    days_label = f"  ·  {days}d" if days is not None else ""
     with st.expander(
-        f"{icon}  {score}/10{title_suffix}  —  {job['title']} @ {job.get('company', '?')}",
+        f"{icon}  {score}/10{title_suffix}  —  {job['title']} @ {job.get('company', '?')}{days_label}",
         expanded=expanded,
     ):
         hint = job.get("_personal_hint")
@@ -313,6 +329,15 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             st.caption(
                 f"Personalized Δ {bonus:+.2f} — {hint}" if hint else f"Personalized Δ {bonus:+.2f}"
             )
+
+        if days is not None:
+            color = "#8B8B85" if days <= 7 else "#f5c518" if days <= 14 else "#ff6b6b"
+            st.markdown(
+                f'<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:{color};'
+                f'letter-spacing:0.1em">{days}d in queue</span>',
+                unsafe_allow_html=True,
+            )
+
         col1, col2 = st.columns([2, 1])
 
         with col1:
