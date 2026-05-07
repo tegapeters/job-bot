@@ -191,18 +191,19 @@ st.markdown("""
     margin: 0 !important;
   }
 
-  /* ── Primary buttons — toned down ── */
+  /* ── Primary buttons ── */
   [data-testid="baseButton-primary"] {
-    background: #1a2a00 !important;
-    color: #D4FF3A !important;
-    border: 1px solid #D4FF3A !important;
+    background: #8faa28 !important;
+    color: #0e0e0e !important;
+    border: 1px solid #8faa28 !important;
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 12px !important;
+    font-weight: 600 !important;
     letter-spacing: 0.1em !important;
   }
   [data-testid="baseButton-primary"]:hover {
-    background: #243800 !important;
-    border-color: #D4FF3A !important;
+    background: #a0c030 !important;
+    border-color: #a0c030 !important;
   }
 
   /* ── Footer ── */
@@ -323,6 +324,16 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             if job.get("url"):
                 st.markdown(f"[Open job posting ↗]({job['url']})")
 
+        # Status → outcome mapping: moving to a status auto-logs the matching event
+        STATUS_OUTCOME_MAP = {
+            "applied":              "applied",
+            "interview":            "interview_scheduled",
+            "rejected":             "rejected",
+            "skipped":              None,
+            "application_closed":   None,
+            "manual_review":        None,
+        }
+
         with col2:
             new_status = st.selectbox(
                 "Move to",
@@ -330,17 +341,23 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 key=f"{key_prefix}_sel_{job['id']}",
             )
             if new_status != "— no change —":
-                if st.button("Save", key=f"{key_prefix}_save_{job['id']}", type="primary"):
+                if st.button("Save", key=f"{key_prefix}_save_{job['id']}", type="secondary"):
                     update_status(job["id"], new_status)
-                    log_event(job["id"], "status_change", f"{job.get('status', 'unknown')} -> {new_status}")
+                    auto_event = STATUS_OUTCOME_MAP.get(new_status)
+                    if auto_event:
+                        log_event(job["id"], auto_event, f"status moved to {new_status}")
+                    else:
+                        log_event(job["id"], "status_change", f"{job.get('status', 'unknown')} -> {new_status}")
                     st.success(f"→ {new_status}")
                     st.rerun()
 
-        st.markdown('<div class="section-label" style="margin-top:16px">Outcome Signal</div>', unsafe_allow_html=True)
+        # Only show manual signals that have no corresponding status
+        st.markdown('<div class="section-label" style="margin-top:16px">Additional Signal</div>', unsafe_allow_html=True)
         signal = st.selectbox(
-            "Log outcome",
-            ["— none —", "applied", "recruiter_response", "interview_scheduled", "rejected", "no_response_14d"],
+            "Log signal",
+            ["— none —", "recruiter_response", "no_response_14d"],
             key=f"{key_prefix}_signal_{job['id']}",
+            help="For events that don't change your status — recruiter reached out, or you've heard nothing after 2 weeks.",
         )
         if signal != "— none —":
             note = st.text_input(
@@ -350,7 +367,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             )
             if st.button("Log Signal", key=f"{key_prefix}_signal_save_{job['id']}"):
                 log_event(job["id"], signal, note.strip())
-                st.success(f"Logged outcome: {signal}")
+                st.success(f"Logged: {signal}")
                 st.rerun()
 
         if job.get("cover_letter"):
@@ -650,14 +667,20 @@ elif page == "Review Queue":
             st.caption("Tune how strongly your past outcomes influence queue ordering.")
             c1, c2, c3 = st.columns(3)
             with c1:
-                weights["pos_company"] = st.slider("Positive company boost", 0.0, 3.0, float(weights["pos_company"]), 0.05)
-                weights["neg_company"] = st.slider("Negative company penalty", -3.0, 0.0, float(weights["neg_company"]), 0.05)
+                weights["pos_company"] = st.slider("Positive company boost", 0.0, 3.0, float(weights["pos_company"]), 0.05,
+                    help="How much to boost jobs from companies where you've had interviews or positive signals. Higher = those companies rank first.")
+                weights["neg_company"] = st.slider("Negative company penalty", -3.0, 0.0, float(weights["neg_company"]), 0.05,
+                    help="How much to push down jobs from companies where you've been rejected or marked skipped. More negative = stronger suppression.")
             with c2:
-                weights["good_source"] = st.slider("Good source boost", 0.0, 2.0, float(weights["good_source"]), 0.05)
-                weights["title_min_hits"] = st.slider("Title overlap min hits", 1, 5, int(weights["title_min_hits"]), 1)
+                weights["good_source"] = st.slider("Good source boost", 0.0, 2.0, float(weights["good_source"]), 0.05,
+                    help="Boost jobs from sources (LinkedIn, Indeed, etc.) that have historically sent you to interviews or strong leads.")
+                weights["title_min_hits"] = st.slider("Title overlap min hits", 1, 5, int(weights["title_min_hits"]), 1,
+                    help="Minimum number of title keywords that must match your past successful jobs before a title-overlap bonus is applied.")
             with c3:
-                weights["title_token_per_hit"] = st.slider("Title overlap per hit", 0.0, 0.6, float(weights["title_token_per_hit"]), 0.01)
-                weights["title_token_cap"] = st.slider("Title overlap cap", 0.0, 2.0, float(weights["title_token_cap"]), 0.05)
+                weights["title_token_per_hit"] = st.slider("Title overlap per hit", 0.0, 0.6, float(weights["title_token_per_hit"]), 0.01,
+                    help="Score bonus added per matching title keyword (e.g. 'senior', 'engineer', 'data'). Stacks up to the cap.")
+                weights["title_token_cap"] = st.slider("Title overlap cap", 0.0, 2.0, float(weights["title_token_cap"]), 0.05,
+                    help="Maximum total bonus from title keyword matches, no matter how many words align. Prevents title-heavy jobs from dominating.")
 
             preview_n = st.slider("Preview rows", 5, 25, 10, 1)
             base = sorted(queue, key=lambda j: j.get("score") or 0, reverse=True)
