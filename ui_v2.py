@@ -636,8 +636,49 @@ elif page == "Review Queue":
         value=True,
         help="Re-ranks using companies, sources, and title words from jobs where you logged positive or negative signals.",
     )
+    weights = {
+        "pos_company": 1.2,
+        "neg_company": -0.9,
+        "good_source": 0.35,
+        "title_token_per_hit": 0.2,
+        "title_token_cap": 1.0,
+        "title_min_hits": 2,
+    }
+
     if personalize:
-        rank_queue_with_personalization(queue)
+        with st.expander("Personalization controls", expanded=False):
+            st.caption("Tune how strongly your past outcomes influence queue ordering.")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                weights["pos_company"] = st.slider("Positive company boost", 0.0, 3.0, float(weights["pos_company"]), 0.05)
+                weights["neg_company"] = st.slider("Negative company penalty", -3.0, 0.0, float(weights["neg_company"]), 0.05)
+            with c2:
+                weights["good_source"] = st.slider("Good source boost", 0.0, 2.0, float(weights["good_source"]), 0.05)
+                weights["title_min_hits"] = st.slider("Title overlap min hits", 1, 5, int(weights["title_min_hits"]), 1)
+            with c3:
+                weights["title_token_per_hit"] = st.slider("Title overlap per hit", 0.0, 0.6, float(weights["title_token_per_hit"]), 0.01)
+                weights["title_token_cap"] = st.slider("Title overlap cap", 0.0, 2.0, float(weights["title_token_cap"]), 0.05)
+
+            preview_n = st.slider("Preview rows", 5, 25, 10, 1)
+            base = sorted(queue, key=lambda j: j.get("score") or 0, reverse=True)
+            reranked = [dict(j) for j in queue]
+            rank_queue_with_personalization(reranked, weights=weights)
+
+            base_top = pd.DataFrame(base[:preview_n])[["title", "company", "score", "source"]]
+            new_top = pd.DataFrame(reranked[:preview_n])[["title", "company", "score", "_effective_score", "_personal_bonus", "source"]]
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown("**Before (AI score only)**")
+                st.dataframe(base_top, use_container_width=True, hide_index=True)
+            with col_b:
+                st.markdown("**After (personalized)**")
+                st.dataframe(new_top, use_container_width=True, hide_index=True)
+
+            if st.button("Reset personalization defaults"):
+                st.rerun()
+
+        rank_queue_with_personalization(queue, weights=weights)
     else:
         queue.sort(key=lambda j: j.get("score") or 0, reverse=True)
 

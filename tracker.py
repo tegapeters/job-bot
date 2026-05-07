@@ -229,10 +229,18 @@ def get_personalization_context(event_limit: int = 400) -> dict:
     }
 
 
-def personalization_bonus(job: dict, ctx: dict) -> tuple[float, str]:
+def personalization_bonus(job: dict, ctx: dict, weights: dict | None = None) -> tuple[float, str]:
     """Return (bonus_points, short_reason) for reranking; bonus typically within [-1, 2]."""
     if not ctx.get("has_signals"):
         return 0.0, ""
+
+    w = weights or {}
+    pos_company_w = float(w.get("pos_company", 1.2))
+    neg_company_w = float(w.get("neg_company", -0.9))
+    good_source_w = float(w.get("good_source", 0.35))
+    title_token_per_hit_w = float(w.get("title_token_per_hit", 0.2))
+    title_token_cap_w = float(w.get("title_token_cap", 1.0))
+    title_min_hits = int(w.get("title_min_hits", 2))
 
     company = (job.get("company") or "").lower().strip()
     title = (job.get("title") or "").lower()
@@ -242,21 +250,21 @@ def personalization_bonus(job: dict, ctx: dict) -> tuple[float, str]:
     reasons: list[str] = []
 
     if company and company in ctx.get("pos_companies", set()):
-        bonus += 1.2
+        bonus += pos_company_w
         reasons.append("company you engaged positively before")
     if company and company in ctx.get("neg_companies", set()):
-        bonus -= 0.9
+        bonus += neg_company_w
         reasons.append("company you skipped/rejected before")
 
     if src in ctx.get("good_sources", set()):
-        bonus += 0.35
+        bonus += good_source_w
         reasons.append("source with past positive outcomes")
 
     tokens = ctx.get("title_tokens") or set()
     if tokens:
         hits = sum(1 for w in title.replace("/", " ").split() if w.strip(".,()[]") in tokens)
-        if hits >= 2:
-            tbonus = min(1.0, 0.2 * hits)
+        if hits >= title_min_hits:
+            tbonus = min(title_token_cap_w, title_token_per_hit_w * hits)
             bonus += tbonus
             reasons.append("title overlap with roles you liked")
 
@@ -264,11 +272,16 @@ def personalization_bonus(job: dict, ctx: dict) -> tuple[float, str]:
     return round(bonus, 2), hint
 
 
-def rank_queue_with_personalization(jobs: list[dict]) -> list[dict]:
+def rank_queue_with_personalization(
+    jobs: list[dict],
+    *,
+    weights: dict | None = None,
+    ctx: dict | None = None,
+) -> list[dict]:
     """Mutates each job with _personal_bonus, _effective_score, _personal_hint; sorts descending."""
-    ctx = get_personalization_context()
+    ctx = ctx or get_personalization_context()
     for j in jobs:
-        b, hint = personalization_bonus(j, ctx)
+        b, hint = personalization_bonus(j, ctx, weights=weights)
         base = float(j.get("score") or 0)
         j["_personal_bonus"] = b
         j["_effective_score"] = round(base + b, 2)
