@@ -289,7 +289,7 @@ def safe_get_apps():
         st.error(f"Cannot connect to database. Check Supabase secrets in Streamlit Cloud settings. Error: `{e}`")
         st.stop()
 
-def safe_get_queue(min_score=7):
+def safe_get_queue(min_score=8):
     try:
         return get_review_queue(min_score=min_score)
     except Exception as e:
@@ -608,7 +608,7 @@ elif page == "Dashboard":
 
     st.markdown('<div class="section-label" style="margin-top:28px">Source health</div>', unsafe_allow_html=True)
     st.caption("Per job board: volume, average score, share scoring 7+, and how many are waiting in Review Queue.")
-    health_df = pd.DataFrame(get_source_health(apps=apps, review_min_score=7))
+    health_df = pd.DataFrame(get_source_health(apps=apps, review_min_score=8))
     if not health_df.empty:
         st.dataframe(health_df, use_container_width=True, hide_index=True)
     else:
@@ -624,9 +624,9 @@ elif page == "Dashboard":
 # ═══════════════════════════════════════════════════════════════════
 elif page == "Review Queue":
     page_header("Review Queue", "Jobs worth <em>applying to.</em>")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">AI fit score 7+ · Status updates save instantly</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">AI fit score 8+ · Status updates save instantly</div>', unsafe_allow_html=True)
 
-    queue = safe_get_queue(min_score=7)
+    queue = safe_get_queue(min_score=8)
     if not queue:
         st.success("Queue is empty — nothing to review.")
         st.stop()
@@ -893,7 +893,7 @@ elif page == "Run Pipeline":
                 )
 
                 progress.progress(100, text="Done.")
-                st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored 7+ added to Review Queue.")
+                st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored 8+ added to Review Queue.")
 
                 if qualified:
                     st.markdown('<div class="section-label" style="margin-top:20px">Qualified Jobs</div>', unsafe_allow_html=True)

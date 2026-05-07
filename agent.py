@@ -278,7 +278,7 @@ def process_jobs(
 
     qualified = [j for j in scored if j["score"] >= REVIEW_MIN_SCORE]
     skipped = len(scored) - len(qualified)
-    print(f"\n✅ {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ | {skipped} below threshold (saved to skip list)")
+    print(f"\n✅ {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ (8+ threshold) | {skipped} below threshold — skipped")
 
     from fetcher import enrich_jobs
     qualified = enrich_jobs(qualified)
