@@ -6,3 +6,5 @@ __pycache__/
 .DS_Store
 brief.log
 *.log
+CVs/
+.local_logs/

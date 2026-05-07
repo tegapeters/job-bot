@@ -14,6 +14,7 @@ from tracker import (
     get_all_applications, get_review_queue,
     update_status, get_seen_ids, log_event, get_event_counts,
     log_experiment_run, get_recent_runs,
+    rank_queue_with_personalization, get_source_health,
 )
 from sessions import save_session, load_session, new_uid
 
@@ -299,10 +300,18 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
     """Render a full job card with details, cover letter, and status controls."""
     score = job.get("score") or 0
     icon = "🟢" if score >= 8 else "🟡" if score >= 6 else "🔴"
+    eff = job.get("_effective_score")
+    title_suffix = f"  (rank {eff})" if eff is not None and eff != score else ""
     with st.expander(
-        f"{icon}  {score}/10  —  {job['title']} @ {job.get('company', '?')}",
+        f"{icon}  {score}/10{title_suffix}  —  {job['title']} @ {job.get('company', '?')}",
         expanded=expanded,
     ):
+        hint = job.get("_personal_hint")
+        bonus = job.get("_personal_bonus")
+        if hint or (bonus and bonus != 0):
+            st.caption(
+                f"Personalized Δ {bonus:+.2f} — {hint}" if hint else f"Personalized Δ {bonus:+.2f}"
+            )
         col1, col2 = st.columns([2, 1])
 
         with col1:
@@ -597,6 +606,14 @@ elif page == "Dashboard":
         st.markdown('<div class="section-label" style="margin-top:28px">Outcome Signals</div>', unsafe_allow_html=True)
         st.bar_chart(pd.Series(event_counts), color="#D4FF3A")
 
+    st.markdown('<div class="section-label" style="margin-top:28px">Source health</div>', unsafe_allow_html=True)
+    st.caption("Per job board: volume, average score, share scoring 7+, and how many are waiting in Review Queue.")
+    health_df = pd.DataFrame(get_source_health(apps=apps, review_min_score=7))
+    if not health_df.empty:
+        st.dataframe(health_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No source breakdown yet.")
+
     st.markdown('<div class="section-label" style="margin-top:28px">Top 10 by Score</div>', unsafe_allow_html=True)
     top = df.nlargest(10, "score")[["title", "company", "location", "score", "score_reason", "status"]]
     st.dataframe(top, use_container_width=True, hide_index=True)
@@ -613,6 +630,16 @@ elif page == "Review Queue":
     if not queue:
         st.success("Queue is empty — nothing to review.")
         st.stop()
+
+    personalize = st.toggle(
+        "Personalize order from my outcomes",
+        value=True,
+        help="Re-ranks using companies, sources, and title words from jobs where you logged positive or negative signals.",
+    )
+    if personalize:
+        rank_queue_with_personalization(queue)
+    else:
+        queue.sort(key=lambda j: j.get("score") or 0, reverse=True)
 
     st.markdown(f'<div class="section-label">{len(queue)} jobs in queue</div>', unsafe_allow_html=True)
 
