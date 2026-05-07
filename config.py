@@ -59,43 +59,49 @@ Tega Eshareturi — Houston, TX
 Tegapeters11@gmail.com | 832.660.1325 | github.com/tegapeters/ai-portfolio
 Salary Target: $140,000+ | Open to: Remote, Hybrid, Onsite (Houston/Austin/major US cities)
 
+PROFESSIONAL SUMMARY
+OCI Data Science Professional and AI automation lead with Oracle production experience across GenAI-enabled operational tooling, cloud service improvement, data integration, executive uptime reporting, and Python/SQL analytics. Known for translating operational data into leadership-ready insights and repeatable automation that improves incident response, service visibility, and engineering focus.
+
 EXPERIENCE
 
 Oracle — Senior NES Global Improvement Engineer (GI) | Jan 2021–Present | Austin, TX
-- Spearhead AI and automation initiatives for Global Improvement; GenAI-powered deployment tools for ticket QA, RCA, and event management
-- Lead execution support for AMER Large Scale Events (LSEs) and Cloud Event Response (CER); coordinate Cloud Service Improvement efforts
-- Deliver executive-level communications during critical incidents; enforce incident management discipline
-- Facilitate cross-functional collaboration between NetSuite and OCI Generative AI teams for new feature development
-- Own monthly NetSuite HUB data integration process — 100% on-time delivery and high data accuracy
-- Generate monthly uptime reports for executive leadership across Jira, internal HUB systems, and customer datasets
-- Leveraged Oracle Analytics Cloud for data-informed decision making and service enhancements
-- SME for Cloud Service Improvements: Python-based data engineering, SQL analysis, Agile/Scrum delivery
-- Led Release Management team initiatives using Scrum for NetSuite internal and customer upgrades
+- Lead AI and automation initiatives for Oracle Global Improvement, building GenAI-enabled deployment tools that improve ticket quality review, RCA consistency, and event-management triage
+- Support AMER Large Scale Events (LSEs) and Cloud Event Response (CER); enforce incident-management discipline and deliver executive communications during critical cloud events
+- Partner with NetSuite and OCI Generative AI teams to translate operational pain points into feature requirements, automation patterns, and service-improvement actions
+- Own monthly NetSuite HUB data integration with 100% on-time delivery and high data accuracy
+- Built Python-based uptime report automation reducing monthly reporting cycle from 3 days to 30 minutes; deployed to production 2026
+- Use Oracle Analytics Cloud to surface operational trends and support data-informed decisions
+- SME for Cloud Service Improvements: Python data engineering, SQL analysis, Agile/Scrum delivery
 
 OCI/GenAI Services Automation Lead (2026–Present)
-- Spearheading automation initiatives to optimize OCI/GenAI service operations, eliminating manual processes
+- Deployed Python-based CLI automation tools (Codex-integrated) for OCI/GenAI service ops, cutting manual reporting from 3 days to 30 minutes
+- Lead OCI/GenAI service-operations automation to reduce manual process load, improve repeatability, and increase engineering bandwidth
 
 OCI/GenAI Ticket Automation Tool
-- Developed GenAI-powered tool to automate QA, RCA, and ticket management for Jira incidents
-- Achieved significant reductions in manual workload; accelerated response to critical incidents
+- Built GenAI-powered tool to automate ticket quality assurance, RCA support, and event-report management for Jira-based incidents
+- Reduced manual review effort and accelerated critical-incident response by standardizing AI-assisted ticket review
+
+On-Time High Quality
+- Led collaborative release-management initiatives using Scrum and technical project-management practices to guide NetSuite internal and customer upgrades
 
 Lockheed Martin — Government Financial Data Analyst | May 2019–Jan 2021 | Marietta, GA
 - Led analytics for Aeronautics Sustainment Operations; BI and advanced data visualization
-- Conducted BI training to modernize financial system processes
+- Delivered BI training that modernized financial-system workflows and improved team adoption of reporting tools
 - Drove cross-functional process integration supporting DCS/USG/FMS customers
 - 2x NextGen Award: "Reshaping Our Financial Operations" (2020), "Evolving Our Culture" (2019)
 - VP of Programs, Lockheed Martin Leadership Association — organized corporate events, mentorship, diversity programs
 - President/Chair, NSBE Lockheed Martin Marietta Enterprise — professional development and academic support
 
 BAE Systems — Business Systems Analyst | Jun 2018–Dec 2018 | Austin, TX
-- Ran security and vulnerability assessments on 200+ systems under DFARS initiatives
-- Automated onboarding and hardware distribution reporting
+- Performed security and vulnerability assessments across 200+ systems, supporting DFARS compliance initiatives
+- Automated onboarding and hardware-distribution reporting by consolidating data sources into repeatable workflows
 
 EDUCATION
 - M.S. Computer Information Systems, Data Science concentration — University of Houston Clear Lake (Jan 2025)
 - B.B.A. Management Information Systems — Texas Southern University (Dec 2018)
 
 CERTIFICATIONS
+- Oracle Cloud Infrastructure Data Science Professional (2026)
 - Oracle Cloud Infrastructure Generative AI Professional (2025)
 - OCI AI Foundations Associate (2025)
 - OCI Data Management Foundations Associate (2024)
@@ -107,10 +113,10 @@ CERTIFICATIONS
 - IT Information Library (ITIL) Foundations (2022)
 
 SKILLS
-- AI/ML: GenAI, LLMs, OCI Generative AI, supervised/unsupervised learning, NLP, LLM implementation
-- Languages: Python, SQL, R, Java
-- Cloud: Oracle Cloud Infrastructure (OCI), Oracle Analytics Cloud, Supabase
-- Data: ETL data engineering, Power BI, Tableau, ELK, OpenSearch, NetSuite
+- Programming & ML: Python, SQL, Java, R, machine learning lifecycle, model artifacts, model deployment, PySpark
+- Cloud & Data: Oracle Cloud Infrastructure, OCI Data Science, Oracle Analytics Cloud, NetSuite, Supabase, Data Flow
+- AI/ML: GenAI, LLMs, OCI Generative AI, RAG concepts, model explainability, MLOps workflows, LLM implementation
+- Reporting & BI: ETL data engineering, Power BI, Tableau, ELK, OpenSearch, uptime reporting, Jira analytics
 - Platforms: Oracle NetSuite, SAP, Jira, Confluence, MS Office
 - Methodologies: Agile, Scrum, ITIL
 """
