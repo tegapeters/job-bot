@@ -682,6 +682,27 @@ elif page == "Review Queue":
         st.success("Queue is empty — nothing to review.")
         st.stop()
 
+    # ── Queue filters ─────────────────────────────────────────────
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        hide_old = st.toggle(
+            "Hide stale listings (>14 days)",
+            value=True,
+            help="Postings older than 2 weeks are often filled. Toggle off to see all.",
+        )
+    with col_f2:
+        display_limit = st.selectbox(
+            "Show top",
+            [25, 50, 100, "All"],
+            index=0,
+            help="Limit visible jobs — sorted by score before the cutoff.",
+        )
+
+    total_in_db = len(queue)
+    if hide_old:
+        queue = [j for j in queue if (_days_in_queue(j) or 0) <= 14]
+    stale_hidden = total_in_db - len(queue)
+
     personalize = st.toggle(
         "Personalize order from my outcomes",
         value=True,
@@ -739,9 +760,17 @@ elif page == "Review Queue":
     else:
         queue.sort(key=lambda j: j.get("score") or 0, reverse=True)
 
-    st.markdown(f'<div class="section-label">{len(queue)} jobs in queue</div>', unsafe_allow_html=True)
+    display_queue = queue if display_limit == "All" else queue[:int(display_limit)]
+    cap_hidden = len(queue) - len(display_queue)
 
-    for job in queue:
+    parts = [f"{len(display_queue)} shown"]
+    if stale_hidden:
+        parts.append(f"{stale_hidden} stale hidden")
+    if cap_hidden:
+        parts.append(f"{cap_hidden} more below limit")
+    st.markdown(f'<div class="section-label">{" · ".join(parts)}</div>', unsafe_allow_html=True)
+
+    for job in display_queue:
         job_card(job, "rq", ["applied", "skipped", "rejected"])
 
 
