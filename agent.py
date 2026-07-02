@@ -60,7 +60,8 @@ SCORE_USER_TEMPLATE = """JOB POSTING:
 Title: {title}
 Company: {company}
 Location: {location}
-Salary: {salary}
+Salary (from posting): {salary}
+Candidate Salary Target: {salary_target}
 Description:
 {description}"""
 
@@ -126,6 +127,43 @@ _SKILL_VOCAB = [
 ]
 
 
+_SALARY_PATTERNS = [
+    # $117,500—$172,800 USD  |  $117,500–$172,800  |  $117,500 - $172,800
+    r'\$\s?([\d,]+)\s*[—–\-]+\s*\$?\s?([\d,]+)\s*(?:USD|/yr|/year|annually)?',
+    # $120K - $160K
+    r'\$\s?([\d]+)[kK]\s*[—–\-]+\s*\$?\s?([\d]+)[kK]',
+    # Up to $180,000
+    r'[Uu]p\s+to\s+\$\s?([\d,]+)',
+    # $150,000/year  or  $150,000 per year
+    r'\$\s?([\d,]+)\s*(?:/yr|/year|per year|annually)',
+]
+
+
+def _extract_salary_from_text(text: str) -> str | None:
+    """Pull the first salary range or figure out of raw text."""
+    if not text:
+        return None
+    for pat in _SALARY_PATTERNS:
+        m = re.search(pat, text)
+        if m:
+            groups = [g for g in m.groups() if g]
+            if len(groups) == 2:
+                lo = int(groups[0].replace(",", ""))
+                hi = int(groups[1].replace(",", ""))
+                # Handle K notation
+                if lo < 1000:
+                    lo *= 1000
+                if hi < 1000:
+                    hi *= 1000
+                return f"${lo:,}–${hi:,}"
+            elif len(groups) == 1:
+                val = int(groups[0].replace(",", ""))
+                if val < 1000:
+                    val *= 1000
+                return f"${val:,}+"
+    return None
+
+
 def _extract_skills(text: str) -> frozenset[str]:
     """Extract recognized skill tokens from text."""
     t = (text or "").lower()
@@ -177,7 +215,7 @@ def _parse_score_response(text: str) -> dict:
     }
 
 
-def score_job_claude(job: dict, resume_text: str = None) -> dict:
+def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0) -> dict:
     """Score a job with Claude. Requires resume_text — no fallback to config."""
     if not resume_text:
         job.update({"score": 0, "score_reason": "No resume loaded", "seniority": "", "salary_match": "Unknown"})
@@ -186,13 +224,25 @@ def score_job_claude(job: dict, resume_text: str = None) -> dict:
         job.update({"score": 0, "score_reason": "Anthropic key missing", "seniority": "", "salary_match": "Unknown"})
         return job
 
+    desc = job.get("description", "")
+
+    # Extract salary from description if not already in the dedicated field
+    salary_field = job.get("salary_range") or job.get("salary")
+    if not salary_field:
+        salary_field = _extract_salary_from_text(desc) or "Not listed"
+        if salary_field != "Not listed":
+            job["salary_range"] = salary_field  # cache for UI display
+
+    salary_target = f"${min_salary:,}+" if min_salary else "Not specified (infer from resume if stated)"
+
     system_text = SCORE_SYSTEM_TEMPLATE.format(resume=resume_text)
     user_text = SCORE_USER_TEMPLATE.format(
         title=job["title"],
         company=job.get("company", ""),
         location=job.get("location", ""),
-        salary=job.get("salary_range") or job.get("salary") or "Not listed",
-        description=job.get("description", "")[:3000],
+        salary=salary_field,
+        salary_target=salary_target,
+        description=desc[:3000],
     )
 
     for attempt in range(3):
@@ -350,9 +400,9 @@ def score_job(
     if backend == "hybrid":
         stage1 = score_job_cheap(job, **cheap_kwargs)
         if (stage1.get("score") or 0) >= hybrid_min:
-            return score_job_claude(job, resume_text=resume_text)
+            return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
         return stage1
-    return score_job_claude(job, resume_text=resume_text)
+    return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
 
 
 def generate_cover_letter(job: dict, resume_text: str = None) -> str | None:
