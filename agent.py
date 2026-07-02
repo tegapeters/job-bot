@@ -128,39 +128,53 @@ _SKILL_VOCAB = [
 
 
 _SALARY_PATTERNS = [
+    # Minimum $106,500 - Midpoint $133,000 - Maximum $159,500  (3-part $)
+    (r'[Mm]inimum\s*\$\s*([\d,]+).*?[Mm]aximum\s*\$\s*([\d,]+)', 2),
+    # Minimum Salary: US Dollar (USD) 106,500 ... Maximum Salary: US Dollar (USD) 159,500
+    (r'[Mm]inimum\s+[Ss]alary\s*:.*?(\d[\d,]+).*?[Mm]aximum\s+[Ss]alary\s*:.*?(\d[\d,]+)', 2),
+    # Min Salary: $106,500 / Max Salary: $159,500
+    (r'[Mm]in(?:imum)?\s*(?:Salary|Pay)?:?\s*\$\s*([\d,]+)\D+[Mm]ax(?:imum)?\s*(?:Salary|Pay)?:?\s*\$\s*([\d,]+)', 2),
     # $117,500—$172,800 USD  |  $117,500–$172,800  |  $117,500 - $172,800
-    r'\$\s?([\d,]+)\s*[—–\-]+\s*\$?\s?([\d,]+)\s*(?:USD|/yr|/year|annually)?',
+    (r'\$\s?([\d,]+)\s*[—–\-]+\s*\$?\s?([\d,]+)\s*(?:USD|/yr|/year|annually)?', 2),
     # $120K - $160K
-    r'\$\s?([\d]+)[kK]\s*[—–\-]+\s*\$?\s?([\d]+)[kK]',
+    (r'\$\s?([\d]+)[kK]\s*[—–\-]+\s*\$?\s?([\d]+)[kK]', 2),
+    # $150,000 to $200,000
+    (r'\$\s?([\d,]+)\s*to\s*\$\s?([\d,]+)', 2),
+    # Base salary range: $X - $Y
+    (r'[Bb]ase\s+[Ss]alary\s*(?:range)?:?\s*\$\s*([\d,]+)\s*[—–\-]+\s*\$?\s*([\d,]+)', 2),
     # Up to $180,000
-    r'[Uu]p\s+to\s+\$\s?([\d,]+)',
+    (r'[Uu]p\s+to\s+\$\s?([\d,]+)', 1),
     # $150,000/year  or  $150,000 per year
-    r'\$\s?([\d,]+)\s*(?:/yr|/year|per year|annually)',
+    (r'\$\s?([\d,]+)\s*(?:/yr|/year|per year|annually)', 1),
+    # Starting at $120,000
+    (r'[Ss]tarting\s+at\s+\$\s?([\d,]+)', 1),
 ]
+
+
+def _to_dollars(val: str) -> int:
+    """Convert string like '120,000' or '120' (K) to integer dollars."""
+    n = int(val.replace(",", ""))
+    return n * 1000 if n < 1000 else n
 
 
 def _extract_salary_from_text(text: str) -> str | None:
     """Pull the first salary range or figure out of raw text."""
     if not text:
         return None
-    for pat in _SALARY_PATTERNS:
-        m = re.search(pat, text)
-        if m:
-            groups = [g for g in m.groups() if g]
-            if len(groups) == 2:
-                lo = int(groups[0].replace(",", ""))
-                hi = int(groups[1].replace(",", ""))
-                # Handle K notation
-                if lo < 1000:
-                    lo *= 1000
-                if hi < 1000:
-                    hi *= 1000
-                return f"${lo:,}–${hi:,}"
-            elif len(groups) == 1:
-                val = int(groups[0].replace(",", ""))
-                if val < 1000:
-                    val *= 1000
-                return f"${val:,}+"
+    for pat, n_groups in _SALARY_PATTERNS:
+        m = re.search(pat, text, re.DOTALL)
+        if not m:
+            continue
+        groups = [g for g in m.groups() if g][:n_groups]
+        if len(groups) == 2:
+            lo = _to_dollars(groups[0])
+            hi = _to_dollars(groups[1])
+            if lo > hi:          # swap if order reversed
+                lo, hi = hi, lo
+            return f"${lo:,}–${hi:,}"
+        elif len(groups) == 1:
+            val = _to_dollars(groups[0])
+            return f"${val:,}+"
     return None
 
 
