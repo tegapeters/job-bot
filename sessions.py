@@ -11,6 +11,7 @@ Table (run once in Supabase SQL editor):
     );
 """
 import uuid
+from datetime import datetime, timezone
 from tracker import get_client
 
 
@@ -21,7 +22,7 @@ def save_session(uid: str, resume_text: str, target_roles: list[str]) -> str:
         "id": uid,
         "resume_text": resume_text,
         "target_roles": target_roles,
-        "updated_at": "now()",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }, on_conflict="id").execute()
     return uid
 
@@ -33,6 +34,15 @@ def load_session(uid: str) -> dict | None:
     if result.data:
         return result.data[0]
     return None
+
+
+def clear_session(uid: str):
+    """Delete the saved resume/roles for this user so Setup starts blank."""
+    sb = get_client()
+    try:
+        sb.table("user_sessions").delete().eq("id", uid).execute()
+    except Exception:
+        pass
 
 
 def new_uid() -> str:

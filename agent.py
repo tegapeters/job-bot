@@ -1,10 +1,9 @@
 """
 Claude Agent — scores jobs and generates tailored cover letters.
-- Scoring: claude-sonnet-4-6 (better at reasoning about transferable skills)
-- Cover letters: claude-sonnet-4-6, only generated for jobs scoring 8+
-- Deduplication in main.py ensures we never re-score a seen job.
-- Prompt caching: resume is sent as a cached system prompt — saves ~70% on
-  input tokens per run since the resume never changes between calls.
+- Scoring: claude-sonnet-4-6 (better reasoning about transferable skills)
+- Cover letters: claude-sonnet-4-6, only for jobs scoring 8+
+- Cheap scorer is resume-aware: extracts skills from resume text dynamically
+- Prompt caching: resume sent as cached system prompt (~70% token savings)
 """
 import re
 import time
@@ -13,18 +12,13 @@ from config import (
     ANTHROPIC_API_KEY,
     REVIEW_MIN_SCORE,
     COVER_LETTER_MIN_SCORE,
-    RESUME_TEXT,
     TARGET_ROLES,
     EXCLUDE_KEYWORDS,
     SCORING_BACKEND,
     HYBRID_CLAUDE_MIN_SCORE,
     ENABLE_COVER_LETTERS,
     LOCATIONS_REMOTE,
-    LOCATIONS_HYBRID,
     LOCATIONS_ONSITE,
-    REMOTE_OK,
-    HYBRID_OK,
-    ONSITE_OK,
     MIN_SALARY,
 )
 
@@ -35,18 +29,30 @@ LETTER_MODEL = "claude-sonnet-4-6"
 
 
 # ── Prompt templates ───────────────────────────────────────────────
-# Split into system (resume — cached) + user (job details — per call).
-# The system prompt is marked with cache_control so the resume tokens are
-# only billed at full rate once per cache TTL (~5 min), then at ~10% cost.
+# User-agnostic rubric: Claude reads the actual resume vs job — no hardcoded skills.
+SCORE_SYSTEM_TEMPLATE = """You are a job fit evaluator. Score how well the CANDIDATE BACKGROUND fits the job posting on a 1–10 scale.
 
-SCORE_SYSTEM_TEMPLATE = """You are a job fit evaluator. Given a candidate's background and a job description, score the fit from 1–10.
+Scoring guidelines:
+10 — Near-perfect match: core skills align exactly, right seniority, salary meets or exceeds candidate target
+ 9 — Excellent match: strong skill overlap, right seniority, compensation likely fits
+ 8 — Strong match: most core skills present, appropriate level, candidate can do this job well
+ 7 — Decent match: transferable skills apply but gaps exist, or location/salary concern
+ 6 — Partial match: some relevant experience but meaningful skill gaps or wrong domain
+ 5 — Weak match: tangentially related, candidate needs significant ramp-up
+1–4 — Poor/no match: wrong field, wrong level, or requires skills candidate clearly lacks
+
+Evaluate based on:
+- Skill fit: compare candidate's actual skills/experience to what the job requires
+- Seniority fit: does the role match the candidate's experience level?
+- Salary fit: does the listed or typical salary match the candidate's stated target?
+- Domain fit: is this a role the candidate has a realistic path to succeeding in?
 
 CANDIDATE BACKGROUND:
 {resume}
 
-Respond in this exact format (no extra text):
+Respond in exactly this format (no extra text):
 SCORE: <number 1-10>
-REASON: <one sentence>
+REASON: <one sentence explaining the primary factor>
 SENIORITY: <Junior|Mid|Senior|Director>
 SALARY_MATCH: <Yes|No|Unknown>"""
 
@@ -54,6 +60,7 @@ SCORE_USER_TEMPLATE = """JOB POSTING:
 Title: {title}
 Company: {company}
 Location: {location}
+Salary: {salary}
 Description:
 {description}"""
 
@@ -74,8 +81,83 @@ Description:
 {description}"""
 
 
+# ── Skill vocabulary for resume-aware cheap scoring ────────────────
+_SKILL_VOCAB = [
+    # Programming
+    "python", "sql", "java", "javascript", "typescript", "scala", "golang", "rust",
+    "c++", "c#", "r script", "bash", "shell",
+    # Data / ML
+    "spark", "pyspark", "kafka", "airflow", "dbt", "databricks", "flink", "hadoop",
+    "hive", "presto", "trino", "luigi", "prefect",
+    "machine learning", "deep learning", "tensorflow", "pytorch", "scikit-learn",
+    "mlflow", "xgboost", "nlp", "llm", "generative ai", "genai", "rag",
+    "data engineering", "data science", "etl", "elt", "pipeline", "analytics",
+    "feature store", "model serving",
+    # Cloud / infra
+    "aws", "gcp", "azure", "oci", "snowflake", "redshift", "bigquery", "s3",
+    "lambda", "glue", "emr", "dataflow", "kubernetes", "docker", "terraform",
+    "ci/cd", "github actions", "devops",
+    # BI / reporting
+    "tableau", "power bi", "looker", "metabase", "qlik", "dax",
+    # Databases
+    "postgresql", "mysql", "mongodb", "cassandra", "dynamodb", "elasticsearch",
+    # Healthcare / nursing
+    "nursing", "registered nurse", " rn ", "bsn", "msn", "icu", "ccu", "critical care",
+    "emergency", "med-surg", "oncology", "clinical", "patient care", "patient safety",
+    "epic", "meditech", "ehr", "emr", "hipaa", "medication administration",
+    "physician", "hospital", "medical", "healthcare", "surgery", "pharmacy",
+    "radiology", "ventilator", "intubation", "acls", "bls", "pals", "ccrn",
+    # Finance / biz
+    "excel", "financial analysis", "accounting", "budget", "forecasting",
+    "accounts payable", "quickbooks", "sap", "oracle financials",
+    # Project / ops
+    "project management", "pmp", "agile", "scrum", "kanban", "jira", "confluence",
+    "vendor management", "operations", "logistics", "supply chain",
+    # Web / SWE
+    "react", "node", "django", "flask", "rails", "spring", "angular", "vue",
+    "rest api", "graphql", "microservices",
+    # Other professions
+    "teacher", "education", "curriculum", "instruction",
+    "legal", "attorney", "paralegal", "compliance",
+    "marketing", "seo", "content", "copywriting", "social media",
+    "sales", "crm", "salesforce", "account management",
+    "design", "figma", "ux", "ui", "user research",
+    "construction", "civil engineering", "architecture",
+]
+
+
+def _extract_skills(text: str) -> frozenset[str]:
+    """Extract recognized skill tokens from text."""
+    t = (text or "").lower()
+    return frozenset(s for s in _SKILL_VOCAB if s in t)
+
+
+_ROLE_STOPWORDS = {"and", "or", "the", "for", "of", "in", "at", "a", "an",
+                   "to", "by", "with", "from", "as", "is", "it", "on"}
+
+
+def _role_matches_title(title: str, roles: list[str]) -> bool:
+    """
+    Keyword-overlap role matching — more forgiving than strict substring.
+    A job title matches a role if ≥60% of the role's meaningful keywords appear in the title.
+    Example: role 'ICU Registered Nurse' matches title 'Registered Nurse, ICU'
+             role 'Data Engineer' matches 'Senior Data Engineer'
+    """
+    t = title.lower()
+    for role in roles:
+        if role.lower() in t:  # fast exact path
+            return True
+        words = [w for w in re.sub(r"[^a-z0-9 ]", " ", role.lower()).split()
+                 if len(w) >= 2 and w not in _ROLE_STOPWORDS]
+        if not words:
+            continue
+        hits = sum(1 for w in words if w in t)
+        if hits >= max(1, round(len(words) * 0.6)):
+            return True
+    return False
+
+
 def _parse_score_response(text: str) -> dict:
-    """Parse Claude's score response with regex. Raises ValueError on bad format."""
     score_match    = re.search(r"SCORE:\s*(\d+)", text)
     reason_match   = re.search(r"REASON:\s*(.+?)(?:\n|$)", text)
     seniority_match = re.search(r"SENIORITY:\s*(Junior|Mid|Senior|Director)", text, re.IGNORECASE)
@@ -96,25 +178,20 @@ def _parse_score_response(text: str) -> dict:
 
 
 def score_job_claude(job: dict, resume_text: str = None) -> dict:
-    """Score a job with Claude.
-
-    The resume is sent in the system prompt with cache_control so it is only
-    tokenised at full cost on the first call (or after the 5-min TTL expires).
-    Subsequent calls in the same run pay ~10% of normal input cost for those tokens.
-    Retries up to 3 times on rate-limit or parse errors.
-    """
+    """Score a job with Claude. Requires resume_text — no fallback to config."""
+    if not resume_text:
+        job.update({"score": 0, "score_reason": "No resume loaded", "seniority": "", "salary_match": "Unknown"})
+        return job
     if not client:
-        job["score"] = 0
-        job["score_reason"] = "Anthropic key missing"
-        job["seniority"] = "Unknown"
-        job["salary_match"] = "Unknown"
+        job.update({"score": 0, "score_reason": "Anthropic key missing", "seniority": "", "salary_match": "Unknown"})
         return job
 
-    system_text = SCORE_SYSTEM_TEMPLATE.format(resume=resume_text or RESUME_TEXT or "")
+    system_text = SCORE_SYSTEM_TEMPLATE.format(resume=resume_text)
     user_text = SCORE_USER_TEMPLATE.format(
         title=job["title"],
         company=job.get("company", ""),
         location=job.get("location", ""),
+        salary=job.get("salary_range") or job.get("salary") or "Not listed",
         description=job.get("description", "")[:3000],
     )
 
@@ -123,11 +200,7 @@ def score_job_claude(job: dict, resume_text: str = None) -> dict:
             msg = client.messages.create(
                 model=SCORE_MODEL,
                 max_tokens=150,
-                system=[{
-                    "type": "text",
-                    "text": system_text,
-                    "cache_control": {"type": "ephemeral"},
-                }],
+                system=[{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_text}],
             )
             parsed = _parse_score_response(msg.content[0].text.strip())
@@ -137,10 +210,9 @@ def score_job_claude(job: dict, resume_text: str = None) -> dict:
             if attempt < 2:
                 time.sleep(2 ** attempt)
             else:
-                print(f"  Score error ({job['title']}): rate limit after {attempt + 1} attempts")
+                print(f"  Score error ({job['title']}): rate limit")
                 break
         except ValueError as e:
-            # Malformed Claude response — retry once before giving up
             if attempt < 2:
                 continue
             print(f"  Score parse error ({job['title']}): {e}")
@@ -149,104 +221,111 @@ def score_job_claude(job: dict, resume_text: str = None) -> dict:
             print(f"  Score error ({job['title']}): {e}")
             break
 
-    job["score"] = 0
-    job["score_reason"] = "Scoring error — check logs"
-    job["seniority"] = ""
-    job["salary_match"] = "Unknown"
+    job.update({"score": 0, "score_reason": "Scoring error", "seniority": "", "salary_match": "Unknown"})
     return job
 
 
-def score_job_cheap(job: dict, resume_text: str = None) -> dict:
+def score_job_cheap(
+    job: dict,
+    resume_text: str = None,
+    min_salary: int = 0,
+    target_roles: list[str] = None,
+) -> dict:
     """
-    Local heuristic scorer (no LLM call).
-    Used for cost reduction and as stage-1 in hybrid mode.
+    Local heuristic scorer. Resume-aware when resume_text is provided:
+    extracts skills from the resume and counts overlap with the job description.
+    Falls back to config-based patterns when resume_text is absent (CLI mode).
     """
-    title = (job.get("title") or "").lower()
+    title       = (job.get("title") or "").lower()
     description = (job.get("description") or "").lower()
-    location = (job.get("location") or "").lower()
-    text = f"{title} {description} {location}"
+    location    = (job.get("location") or "").lower()
+    job_text    = f"{title} {description} {location}"
+
+    resume_skills = _extract_skills(resume_text) if resume_text else frozenset()
+    roles = [r.lower() for r in (target_roles or [])]
 
     score = 4
     reasons = []
 
-    # Role/title fit gets the highest weight in cheap mode.
-    title_role_hits = sum(1 for role in TARGET_ROLES if role.lower() in title)
-    body_role_hits = sum(1 for role in TARGET_ROLES if role.lower() in description)
-    if title_role_hits >= 1:
+    # ── Role / title fit ──────────────────────────────────────────
+    check_roles = roles if roles else [r.lower() for r in TARGET_ROLES]
+    if _role_matches_title(title, check_roles):
         score += 3
         reasons.append("target role in title")
-    elif body_role_hits >= 1:
+    elif any(_role_matches_title(r, [description[:200]]) for r in check_roles):
         score += 2
         reasons.append("target role in description")
+    elif roles:  # only penalise when user has set explicit roles
+        score -= 1
+        reasons.append("role not in posting")
 
-    # Core skill keywords from your profile.
-    skill_patterns = [
-        r"\bpython\b", r"\bsql\b", r"\bdata engineer(ing)?\b", r"\bai\b",
-        r"\bgenai\b", r"\bmachine learning\b", r"\banalyst\b", r"\bproduct\b",
-        r"\bagile\b", r"\bscrum\b",
-    ]
-    skill_hits = sum(1 for pat in skill_patterns if re.search(pat, text))
-    if skill_hits >= 4:
-        score += 2
-        reasons.append("strong skill overlap")
-    elif skill_hits >= 2:
-        score += 1
-        reasons.append("skill overlap")
-
-    # Location fit based on configured preferences.
-    location_score = 0
-    loc = location.strip()
-    is_remote = ("remote" in loc) or ("work from home" in loc) or ("anywhere" in loc)
-    onsite_match = any(city.lower() in loc for city in LOCATIONS_ONSITE)
-    hybrid_match = any(city.lower() in loc for city in LOCATIONS_HYBRID)
-    remote_region_match = any(region.lower() in loc for region in LOCATIONS_REMOTE)
-
-    if is_remote and REMOTE_OK:
-        location_score += 2
-        reasons.append("remote location fit")
-    elif is_remote and not REMOTE_OK:
-        location_score -= 2
-        reasons.append("remote not preferred")
-    elif onsite_match and ONSITE_OK:
-        location_score += 1
-        reasons.append("onsite location fit")
-    elif hybrid_match and HYBRID_OK:
-        location_score += 1
-        reasons.append("hybrid location fit")
-    elif remote_region_match and (REMOTE_OK or HYBRID_OK or ONSITE_OK):
-        location_score += 1
-        reasons.append("region match")
-    else:
-        location_score -= 1
-        reasons.append("location mismatch")
-    score += location_score
-
-    # Simple salary signal (only if posting mentions amounts).
-    salary_numbers = re.findall(r"\$?\s?(\d{2,3})\s?[kK]\b", text)
-    if salary_numbers:
-        high_k = max(int(n) for n in salary_numbers) * 1000
-        if high_k >= MIN_SALARY:
+    # ── Skill overlap ─────────────────────────────────────────────
+    if resume_skills:
+        job_skills = _extract_skills(job_text)
+        overlap = resume_skills & job_skills
+        if len(overlap) >= 4:
+            score += 2
+            reasons.append(f"strong skill match ({len(overlap)} skills)")
+        elif len(overlap) >= 2:
             score += 1
-            reasons.append("salary target likely met")
+            reasons.append(f"skill overlap ({len(overlap)} skills)")
+        elif len(overlap) == 0:
+            score -= 2
+            reasons.append("no skill overlap with resume")
+    else:
+        # CLI mode: hardcoded patterns
+        skill_patterns = [
+            r"\bpython\b", r"\bsql\b", r"\bdata engineer(ing)?\b", r"\bai\b",
+            r"\bgenai\b", r"\bmachine learning\b", r"\banalyst\b", r"\bagile\b",
+        ]
+        hits = sum(1 for p in skill_patterns if re.search(p, job_text))
+        if hits >= 4:
+            score += 2
+            reasons.append("strong skill overlap")
+        elif hits >= 2:
+            score += 1
+            reasons.append("skill overlap")
+
+    # ── Location ──────────────────────────────────────────────────
+    is_remote = any(kw in location for kw in ("remote", "work from home", "anywhere"))
+    onsite_match = any(city.lower() in location for city in LOCATIONS_ONSITE)
+    region_match = any(r.lower() in location for r in LOCATIONS_REMOTE)
+
+    if is_remote or region_match:
+        score += 1
+        reasons.append("remote / region match")
+    elif onsite_match:
+        score += 1
+        reasons.append("onsite location match")
+
+    # ── Salary ────────────────────────────────────────────────────
+    effective_min = min_salary if min_salary else MIN_SALARY
+    salary_nums = re.findall(r"\$?\s?(\d{2,3})\s?[kK]\b", job_text)
+    if salary_nums and effective_min:
+        high_k = max(int(n) for n in salary_nums) * 1000
+        if high_k >= effective_min:
+            score += 1
+            reasons.append("salary target met")
         else:
             score -= 1
-            reasons.append("salary likely below target")
+            reasons.append("salary below target")
 
-    exclude_hits = sum(1 for kw in EXCLUDE_KEYWORDS if kw in text)
-    if exclude_hits > 0:
+    # ── Exclusions ────────────────────────────────────────────────
+    exclude_hits = sum(1 for kw in EXCLUDE_KEYWORDS if kw in job_text)
+    if exclude_hits:
         score -= min(4, exclude_hits)
-        reasons.append("contains excluded keywords")
+        reasons.append("excluded keywords")
 
-    if re.search(r"\b(senior|staff|principal|lead)\b", text):
-        score += 2
-        reasons.append("seniority fit")
-    elif re.search(r"\b(junior|entry level|intern)\b", text):
+    # ── Seniority ─────────────────────────────────────────────────
+    if re.search(r"\b(senior|staff|principal|lead)\b", job_text):
+        score += 1
+        reasons.append("seniority match")
+    elif re.search(r"\b(junior|entry.?level|intern)\b", job_text):
         score -= 3
-        reasons.append("likely too junior")
+        reasons.append("too junior")
 
-    final_score = max(1, min(10, score))
-    job["score"] = final_score
-    job["score_reason"] = ", ".join(reasons) if reasons else "heuristic fit estimate"
+    job["score"] = max(1, min(10, score))
+    job["score_reason"] = ", ".join(reasons) if reasons else "heuristic estimate"
     job["seniority"] = "Unknown"
     job["salary_match"] = "Unknown"
     return job
@@ -257,34 +336,29 @@ def score_job(
     resume_text: str = None,
     scoring_backend: str = None,
     hybrid_claude_min_score: int = None,
+    min_salary: int = 0,
+    target_roles: list[str] = None,
 ) -> dict:
     """Dispatch scoring based on configured backend."""
-    backend = (scoring_backend or SCORING_BACKEND or "claude").strip().lower()
-    hybrid_min = (
-        hybrid_claude_min_score
-        if hybrid_claude_min_score is not None
-        else HYBRID_CLAUDE_MIN_SCORE
-    )
+    backend   = (scoring_backend or SCORING_BACKEND or "claude").strip().lower()
+    hybrid_min = hybrid_claude_min_score if hybrid_claude_min_score is not None else HYBRID_CLAUDE_MIN_SCORE
+
+    cheap_kwargs = dict(resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)
+
     if backend == "cheap":
-        return score_job_cheap(job, resume_text=resume_text)
+        return score_job_cheap(job, **cheap_kwargs)
     if backend == "hybrid":
-        stage1 = score_job_cheap(job, resume_text=resume_text)
+        stage1 = score_job_cheap(job, **cheap_kwargs)
         if (stage1.get("score") or 0) >= hybrid_min:
             return score_job_claude(job, resume_text=resume_text)
         return stage1
     return score_job_claude(job, resume_text=resume_text)
 
 
-def generate_cover_letter(job: dict, resume_text: str = None) -> str:
-    """Generate cover letter using Sonnet — only called for qualified jobs.
-
-    Resume is sent as a cached system prompt so it shares the same cache
-    as the scoring calls within the same pipeline run.
-    """
-    if not resume_text:
-        return "No resume loaded — cannot generate a personalised cover letter."
-    if not client:
-        return "Anthropic key missing — cannot generate cover letter."
+def generate_cover_letter(job: dict, resume_text: str = None) -> str | None:
+    """Generate cover letter. Returns None (not an error string) if prerequisites unmet."""
+    if not resume_text or not client:
+        return None
 
     system_text = COVER_LETTER_SYSTEM_TEMPLATE.format(resume=resume_text)
     user_text = COVER_LETTER_USER_TEMPLATE.format(
@@ -297,16 +371,13 @@ def generate_cover_letter(job: dict, resume_text: str = None) -> str:
         msg = client.messages.create(
             model=LETTER_MODEL,
             max_tokens=600,
-            system=[{
-                "type": "text",
-                "text": system_text,
-                "cache_control": {"type": "ephemeral"},
-            }],
+            system=[{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user_text}],
         )
         return msg.content[0].text.strip()
     except Exception as e:
-        return f"Error generating cover letter: {e}"
+        print(f"  Cover letter error ({job['title']}): {e}")
+        return None
 
 
 def process_jobs(
@@ -316,45 +387,63 @@ def process_jobs(
     scoring_backend: str = None,
     enable_cover_letters: bool = None,
     hybrid_claude_min_score: int = None,
+    min_salary: int = 0,
+    target_roles: list[str] = None,
 ) -> tuple[list[dict], list[dict]]:
-    """Score all jobs with Haiku, generate cover letters with Sonnet for 7+ only.
-    Returns (all_scored, qualified) — all_scored saved to dedup cache, qualified for review.
-    resume_text: override the default resume (used for beta multi-user mode).
+    """
+    Score all jobs, generate cover letters for qualified ones.
+    Returns (all_scored, qualified).
+
+    Pass 1: fast cheap pre-filter using resume skills + target roles.
+    Pass 2: full scoring (claude / hybrid / cheap) on jobs that pass threshold.
     """
     mode = (scoring_backend or SCORING_BACKEND or "claude").strip().lower()
     if mode not in {"cheap", "hybrid", "claude"}:
         mode = "claude"
-    print(f"\n🤖 Scoring {len(jobs)} new jobs with mode={mode}...")
-    scored = []
 
-    for i, job in enumerate(jobs):
-        job = score_job(
-            job,
-            resume_text=resume_text,
-            scoring_backend=mode,
-            hybrid_claude_min_score=hybrid_claude_min_score,
-        )
+    cheap_kwargs = dict(resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)
+    score_kwargs = dict(
+        resume_text=resume_text,
+        scoring_backend=mode,
+        hybrid_claude_min_score=hybrid_claude_min_score,
+        min_salary=min_salary,
+        target_roles=target_roles,
+    )
+
+    # Pass 1: cheap pre-filter (now resume-aware, uses user's target_roles)
+    print(f"\n🤖 Pass 1 — pre-filtering {len(jobs)} jobs...")
+    prescored = [score_job_cheap(job, **cheap_kwargs) for job in jobs]
+
+    to_enrich    = [j for j in prescored if (j.get("score") or 0) >= 5]
+    rejected_early = [j for j in prescored if (j.get("score") or 0) < 5]
+    print(f"  {len(to_enrich)} passed pre-filter · {len(rejected_early)} rejected early")
+
+    from fetcher import enrich_jobs
+    to_enrich = enrich_jobs(to_enrich)
+
+    # Pass 2: full scoring
+    print(f"\n🤖 Pass 2 — full scoring {len(to_enrich)} jobs (mode={mode})...")
+    scored = list(rejected_early)
+    for i, job in enumerate(to_enrich):
+        job = score_job(job, **score_kwargs)
         if verbose:
             flag = "✅" if job["score"] >= REVIEW_MIN_SCORE else "  "
-            print(f"  {flag} [{i+1}/{len(jobs)}] {job['title']} @ {job.get('company','')} "
-                  f"— {job['score']}/10")
+            print(f"  {flag} [{i+1}/{len(to_enrich)}] {job['title']} @ {job.get('company','')} — {job['score']}/10")
         scored.append(job)
 
     qualified = [j for j in scored if j["score"] >= REVIEW_MIN_SCORE]
-    skipped = len(scored) - len(qualified)
-    print(f"\n✅ {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ (8+ threshold) | {skipped} below threshold — skipped")
-
-    from fetcher import enrich_jobs
-    qualified = enrich_jobs(qualified)
+    print(f"\n✅ {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ | {len(scored)-len(qualified)} below threshold")
 
     letters_enabled = ENABLE_COVER_LETTERS if enable_cover_letters is None else bool(enable_cover_letters)
     if letters_enabled and client and mode != "cheap":
-        cover_letter_jobs = [j for j in qualified if (j.get("score") or 0) >= COVER_LETTER_MIN_SCORE]
-        print(f"\n✍️  Generating cover letters for {len(cover_letter_jobs)} jobs scoring {COVER_LETTER_MIN_SCORE}+ (skipping {len(qualified) - len(cover_letter_jobs)} below threshold)...")
-        for i, job in enumerate(cover_letter_jobs):
-            print(f"  [{i+1}/{len(cover_letter_jobs)}] {job['title']} @ {job.get('company','')}")
-            job["cover_letter"] = generate_cover_letter(job, resume_text=resume_text)
+        cl_jobs = [j for j in qualified if (j.get("score") or 0) >= COVER_LETTER_MIN_SCORE]
+        print(f"\n✍️  Cover letters for {len(cl_jobs)} jobs scoring {COVER_LETTER_MIN_SCORE}+...")
+        for i, job in enumerate(cl_jobs):
+            print(f"  [{i+1}/{len(cl_jobs)}] {job['title']} @ {job.get('company','')}")
+            cl = generate_cover_letter(job, resume_text=resume_text)
+            if cl:
+                job["cover_letter"] = cl
     else:
-        print("\n✍️  Cover letters disabled for this run (no Claude usage).")
+        print("\n✍️  Cover letters skipped.")
 
     return scored, qualified

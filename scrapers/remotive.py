@@ -1,20 +1,16 @@
 """
-Remotive.com — free public API for remote jobs, no auth required
+Remotive.com — free public API, no auth required.
+https://remotive.com/api/remote-jobs
+Note: the category param is unreliable; we fetch by keyword search per role
+and rely on title matching to keep results relevant.
 """
 import hashlib
+import re
 import requests
 from datetime import datetime
-from config import TARGET_ROLES, EXCLUDE_KEYWORDS, MIN_SALARY
+from config import EXCLUDE_KEYWORDS
 
 API = "https://remotive.com/api/remote-jobs"
-
-REMOTIVE_CATEGORIES = [
-    "data",
-    "data-eng",
-    "product",
-    "project-mgmt",
-    "software-dev",
-]
 
 
 def _make_id(url: str) -> str:
@@ -26,45 +22,59 @@ def _is_excluded(title: str, desc: str) -> bool:
     return any(kw in text for kw in EXCLUDE_KEYWORDS)
 
 
-def _matches_target(title: str, target_roles: list[str] = None) -> bool:
-    t = title.lower()
-    roles = target_roles if target_roles else TARGET_ROLES
-    keywords = [r.lower() for r in roles]
-    return any(k in t for k in keywords)
+def scrape_remotive(target_roles: list[str] = None, min_salary: int = 0) -> list[dict]:
+    jobs: list[dict] = []
+    seen: set[str] = set()
 
+    # Build search queries from target roles (deduplicated, max 4)
+    queries: list[str] = []
+    seen_q: set[str] = set()
+    if target_roles:
+        for role in target_roles:
+            # Use first two meaningful words as the search term
+            words = [w for w in role.lower().split() if len(w) > 2]
+            q = " ".join(words[:2])
+            if q and q not in seen_q:
+                seen_q.add(q)
+                queries.append(q)
+            if len(queries) >= 4:
+                break
+    else:
+        queries = ["data engineer", "software engineer"]
 
-def scrape_remotive(target_roles: list[str] = None) -> list[dict]:
-    jobs = []
-    seen = set()
-
-    for cat in REMOTIVE_CATEGORIES:
+    for query in queries:
         try:
-            resp = requests.get(API, params={"category": cat, "limit": 50}, timeout=10)
+            resp = requests.get(
+                API,
+                params={"search": query, "limit": 20},
+                timeout=12,
+            )
             if resp.status_code != 200:
                 continue
-            data = resp.json().get("jobs", [])
-            for j in data:
+
+            for j in resp.json().get("jobs", []):
                 title = j.get("title", "")
-                desc = j.get("description", "")
-                url = j.get("url", "")
+                url   = j.get("url", "")
+                desc  = j.get("description", "") or ""
 
-                if not _matches_target(title, target_roles=target_roles):
+                if not url:
                     continue
-                if _is_excluded(title, desc):
-                    continue
-
-                # Salary check if listed
-                salary = j.get("salary", "")
-                if salary:
-                    nums = [int(n.replace(",", "")) for n in
-                            __import__("re").findall(r"\d[\d,]+", salary)]
-                    if nums and max(nums) < MIN_SALARY:
-                        continue
 
                 job_id = _make_id(url)
                 if job_id in seen:
                     continue
                 seen.add(job_id)
+
+                if _is_excluded(title, desc):
+                    continue
+
+                # Salary gate
+                salary_str = j.get("salary", "")
+                if salary_str and min_salary:
+                    nums = [int(n.replace(",", "")) for n in
+                            re.findall(r"\d[\d,]+", salary_str)]
+                    if nums and max(nums) < min_salary:
+                        continue
 
                 jobs.append({
                     "id": job_id,
@@ -73,13 +83,15 @@ def scrape_remotive(target_roles: list[str] = None) -> list[dict]:
                     "company": j.get("company_name", ""),
                     "location": "Remote",
                     "url": url,
-                    "description": desc,
+                    "description": desc[:5000],
                     "posted_at": j.get("publication_date", datetime.utcnow().isoformat()),
                     "status": "new",
                     "score": None,
                     "cover_letter": None,
+                    "salary_range": salary_str or None,
                 })
+
         except Exception as e:
-            print(f"  Remotive error ({cat}): {e}")
+            print(f"  Remotive error (query={query!r}): {e}")
 
     return jobs

@@ -5,17 +5,14 @@ Job Bot Configuration — Tega Eshareturi
 # ── Job Preferences ────────────────────────────────────────────────
 TARGET_ROLES = [
     "Data Engineer",
+    "Senior Data Engineer",
     "AI Engineer",
-    "Senior AI Engineer",
     "GenAI Engineer",
     "Machine Learning Engineer",
-    "Senior ML Engineer",
     "Analytics Engineer",
     "Senior Analytics Engineer",
     "Senior Data Analyst",
     "Senior Business Intelligence Engineer",
-    "Senior Technical Program Manager",
-    "Technical Project Manager",
 ]
 
 LOCATIONS_REMOTE = ["Remote", "United States"]
@@ -53,6 +50,11 @@ EXCLUDE_KEYWORDS = [
     "roofing", "mep", "hvac", "wastewater", "solid waste", "aviation",
     "power generation", "utility locating", "geospatial", "ambient air",
     "data center build", "workspace renovation", "traveling senior",
+    # Hardware / embedded / systems (not data/AI)
+    "embedded", "firmware", "robotics", "radar", "silicon",
+    "compiler", "server manageability", "fpga", "rtos", "kernel",
+    "data center site", "data center engineer", "network device",
+    "wearable", "hpc support", "devops engineer",
 ]
 
 # ── Resume / Background ─────────────────────────────────────────────

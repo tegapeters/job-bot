@@ -1,6 +1,6 @@
 """
-Fetches full job descriptions and company names from LinkedIn job pages.
-Called for qualifying jobs (score 7+) before cover letter generation.
+Fetches full job descriptions, salary, and company from LinkedIn.
+Uses the jobs-guest API endpoint which returns the full posting without auth or JS.
 """
 import re
 import time
@@ -15,6 +15,13 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
+GUEST_API = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
+
+
+def _extract_job_id(url: str) -> str | None:
+    m = re.search(r"-(\d{10,})/?$", url)
+    return m.group(1) if m else None
+
 
 def _clean(html: str) -> str:
     text = re.sub(r"<[^>]+>", " ", html)
@@ -26,36 +33,59 @@ def _clean(html: str) -> str:
 
 
 def fetch_linkedin_job(url: str) -> dict:
-    """Returns {description, company} scraped from a LinkedIn job page."""
-    result = {"description": "", "company": ""}
+    """Returns {description, company, salary} using LinkedIn's guest API."""
+    result = {"description": "", "company": "", "salary": ""}
+
+    job_id = _extract_job_id(url)
+    api_url = GUEST_API.format(job_id=job_id) if job_id else url
+
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=12)
+        resp = requests.get(api_url, headers=HEADERS, timeout=12)
+        if resp.status_code != 200:
+            # fall back to the view URL
+            resp = requests.get(url, headers=HEADERS, timeout=12)
         if resp.status_code != 200:
             return result
         html = resp.text
 
-        # Company name
-        company_match = re.search(
+        # Company
+        for pat in [
             r'class="[^"]*topcard__org-name-link[^"]*"[^>]*>(.*?)</a>',
-            html, re.DOTALL
-        )
-        if not company_match:
-            company_match = re.search(
-                r'"companyName"\s*:\s*"([^"]+)"', html
-            )
-        if company_match:
-            result["company"] = _clean(company_match.group(1))
+            r'class="[^"]*sub-nav-cta__optional-url[^"]*"[^>]*>(.*?)</a>',
+            r'"companyName"\s*:\s*"([^"]+)"',
+        ]:
+            m = re.search(pat, html, re.DOTALL)
+            if m:
+                result["company"] = _clean(m.group(1))
+                break
 
-        # Job description — LinkedIn wraps it in a specific div
-        desc_match = re.search(
-            r'class="[^"]*description__text[^"]*"[^>]*>(.*?)</div>',
+        # Full description — guest API returns the complete text inside this section
+        desc_m = re.search(
+            r'<div[^>]*class="[^"]*description__text[^"]*"[^>]*>(.*?)</section>',
             html, re.DOTALL
         )
-        if not desc_match:
-            # Fallback: JSON-LD description field
-            desc_match = re.search(r'"description"\s*:\s*\{"value"\s*:\s*"(.*?)"', html)
-        if desc_match:
-            result["description"] = _clean(desc_match.group(1))[:4000]
+        if not desc_m:
+            desc_m = re.search(
+                r'<section[^>]*class="[^"]*show-more-less-html[^"]*"[^>]*>(.*?)</section>',
+                html, re.DOTALL
+            )
+        if not desc_m:
+            # JSON-LD fallback
+            desc_m = re.search(r'"description"\s*:\s*\{"value"\s*:\s*"(.*?)"(?:,|\})', html, re.DOTALL)
+        if desc_m:
+            result["description"] = _clean(desc_m.group(1))[:5000]
+
+        # Salary — LinkedIn puts it after a "compensation" heading near the bottom
+        salary_m = re.search(
+            r'[Cc]ompensation[^<]*(?:<[^>]+>)*\s*(\$[\d,.]+ ?USD? ?[-–] ?\$[\d,.]+)',
+            html, re.DOTALL
+        )
+        if not salary_m:
+            salary_m = re.search(r'(\$[\d,.]+ ?USD ?- ?\$[\d,.]+ ?USD)', html)
+        if not salary_m:
+            salary_m = re.search(r'(\$[\d,.]+(?:K)?\s*[-–]\s*\$[\d,.]+(?:K)?)', html)
+        if salary_m:
+            result["salary"] = _clean(salary_m.group(1))[:120]
 
     except Exception as e:
         print(f"  Fetch error ({url[:60]}): {e}")
@@ -63,17 +93,28 @@ def fetch_linkedin_job(url: str) -> dict:
 
 
 def enrich_jobs(jobs: list[dict]) -> list[dict]:
-    """Fetch full descriptions + company names for a list of jobs."""
-    print(f"\n🌐 Fetching full descriptions for {len(jobs)} qualifying jobs...")
-    for i, job in enumerate(jobs):
+    """Fetch full descriptions for LinkedIn jobs. Non-LinkedIn jobs are skipped
+    (their descriptions come directly from the scraper API/RSS)."""
+    li_jobs = [j for j in jobs if "linkedin.com" in (j.get("url") or "")]
+    other   = [j for j in jobs if "linkedin.com" not in (j.get("url") or "")]
+
+    if li_jobs:
+        print(f"\n🌐 Enriching {len(li_jobs)} LinkedIn jobs (skipping {len(other)} non-LinkedIn)...")
+    for i, job in enumerate(li_jobs):
         url = job.get("url", "")
-        if not url:
-            continue
-        print(f"  [{i+1}/{len(jobs)}] {job['title'][:50]}")
+        print(f"  [{i+1}/{len(li_jobs)}] {job['title'][:55]}", end="", flush=True)
         data = fetch_linkedin_job(url)
         if data["description"]:
             job["description"] = data["description"]
+            print(f" ✓ ({len(data['description'])} chars)", end="")
+        else:
+            print(" ✗ no desc", end="")
         if data["company"] and not job.get("company"):
             job["company"] = data["company"]
-        time.sleep(1.0)
-    return jobs
+        if data["salary"]:
+            job["salary_range"] = data["salary"]
+            print(f" | {data['salary'][:40]}", end="")
+        print()
+        time.sleep(0.8)
+
+    return li_jobs + other

@@ -17,13 +17,14 @@ from tracker import upsert_jobs, get_all_applications, get_seen_ids
 
 def cmd_scrape():
     print("🚀 Starting job pipeline...\n")
-    jobs = scrape_all()
+    from config import TARGET_ROLES, MIN_SALARY
+    jobs = scrape_all(target_roles=TARGET_ROLES, min_salary=MIN_SALARY)
     if not jobs:
         print("No jobs found.")
         return
 
-    # Skip jobs already scored — prevents re-charging on every run
-    seen = get_seen_ids()
+    # CLI mode: no user_id — seen IDs are raw (unscoped) 16-char hashes
+    seen = get_seen_ids(user_id=None)
     new_jobs = [j for j in jobs if j["id"] not in seen]
     print(f"  {len(jobs)} scraped · {len(seen)} already seen · {len(new_jobs)} new\n")
 
@@ -31,8 +32,14 @@ def cmd_scrape():
         print("Nothing new to score.")
         return
 
-    all_scored, qualified = process_jobs(new_jobs)
-    upsert_jobs(all_scored)   # save everything so low scorers are never re-scored
+    from config import RESUME_TEXT, TARGET_ROLES, MIN_SALARY
+    all_scored, qualified = process_jobs(
+        new_jobs,
+        resume_text=RESUME_TEXT,
+        target_roles=TARGET_ROLES,
+        min_salary=MIN_SALARY,
+    )
+    upsert_jobs(all_scored, user_id=None)   # CLI: no user isolation
     print(f"\n🎯 Done. {len(qualified)} jobs scored 7+ queued for review.")
     print("   Run: python main.py review")
 
@@ -80,6 +87,7 @@ def cmd_setup_db():
 
 CREATE TABLE IF NOT EXISTS job_applications (
   id            TEXT PRIMARY KEY,
+  user_id       UUID,
   source        TEXT,
   title         TEXT,
   company       TEXT,
@@ -96,22 +104,26 @@ CREATE TABLE IF NOT EXISTS job_applications (
   created_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_job_applications_score ON job_applications(score DESC);
-CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications(status);
+CREATE INDEX IF NOT EXISTS idx_job_applications_score   ON job_applications(score DESC);
+CREATE INDEX IF NOT EXISTS idx_job_applications_status  ON job_applications(status);
+CREATE INDEX IF NOT EXISTS idx_job_applications_user_id ON job_applications(user_id);
 
 CREATE TABLE IF NOT EXISTS application_events (
   id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id    UUID,
   job_id     TEXT REFERENCES job_applications(id) ON DELETE CASCADE,
   event_type TEXT NOT NULL,
   detail     TEXT DEFAULT '',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_application_events_job_id ON application_events(job_id);
-CREATE INDEX IF NOT EXISTS idx_application_events_type ON application_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_application_events_job_id  ON application_events(job_id);
+CREATE INDEX IF NOT EXISTS idx_application_events_type    ON application_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_application_events_user_id ON application_events(user_id);
 
 CREATE TABLE IF NOT EXISTS pipeline_runs (
   id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id               UUID,
   run_label             TEXT,
   scoring_mode          TEXT NOT NULL,
   hybrid_threshold      INTEGER DEFAULT 6,
@@ -124,6 +136,14 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_created_at ON pipeline_runs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_user_id    ON pipeline_runs(user_id);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id           TEXT PRIMARY KEY,
+  resume_text  TEXT,
+  target_roles JSONB,
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
 """
     print(sql)
     print("Copy the above SQL and run it in: https://supabase.com/dashboard/project/mokqyqgdjtxtstrviorr/sql")

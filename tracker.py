@@ -1,7 +1,9 @@
 """
-Supabase tracker — stores all jobs and application status
-Table: job_applications
+Supabase tracker — stores all jobs and application status.
+All read/write functions accept an optional user_id for per-user data isolation.
+When user_id is None (CLI mode), queries behave as before (no user filter).
 """
+import hashlib
 from collections import Counter
 
 from supabase import create_client
@@ -12,13 +14,30 @@ def get_client():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-def upsert_jobs(jobs: list[dict]):
-    """Insert new jobs, skip duplicates."""
+def _scope_id(raw_id: str, user_id: str | None) -> str:
+    """Make job IDs user-specific so each user has isolated rows.
+
+    Same URL + same user  → same scoped ID  → dedup still works.
+    Same URL + diff user  → different scoped ID → separate rows.
+    No user_id (CLI mode) → original ID unchanged.
+
+    Uses 8-char user suffix (4B combinations) to make collisions negligible.
+    Total ID: 8 chars job hash + 8 chars user hash = 16 chars, same length.
+    """
+    if not user_id:
+        return raw_id
+    suffix = hashlib.md5(user_id.encode()).hexdigest()[:8]
+    return raw_id[:8] + suffix
+
+
+def upsert_jobs(jobs: list[dict], user_id: str | None = None):
+    """Insert/update jobs. When user_id is provided, IDs are scoped per user."""
     sb = get_client()
     rows = []
     for j in jobs:
-        rows.append({
-            "id": j["id"],
+        scoped_id = _scope_id(j["id"], user_id)
+        row = {
+            "id": scoped_id,
             "source": j.get("source", ""),
             "title": j.get("title", ""),
             "company": j.get("company", ""),
@@ -32,44 +51,45 @@ def upsert_jobs(jobs: list[dict]):
             "seniority": j.get("seniority", ""),
             "salary_match": j.get("salary_match", "Unknown"),
             "cover_letter": j.get("cover_letter", ""),
-        })
+        }
+        if user_id:
+            row["user_id"] = user_id
+        rows.append(row)
 
     if rows:
-        sb.table("job_applications").upsert(
-            rows,
-            on_conflict="id",
-        ).execute()
+        sb.table("job_applications").upsert(rows, on_conflict="id").execute()
         print(f"  💾 Saved {len(rows)} jobs to Supabase")
 
 
-def update_status(job_id: str, status: str):
-    """Update application status: new | reviewing | applied | rejected | interview"""
+def update_status(job_id: str, status: str, user_id: str | None = None):
+    """Update application status."""
     sb = get_client()
-    sb.table("job_applications").update({"status": status}).eq("id", job_id).execute()
+    q = sb.table("job_applications").update({"status": status}).eq("id", job_id)
+    if user_id:
+        q = q.eq("user_id", user_id)
+    q.execute()
 
 
-def log_event(job_id: str, event_type: str, detail: str = ""):
-    """
-    Append an outcome/feedback event for a job.
-    Safe no-op if the table does not exist yet.
-    """
+def log_event(job_id: str, event_type: str, detail: str = "", user_id: str | None = None):
+    """Append an outcome/feedback event. Safe no-op if table is missing."""
     sb = get_client()
     try:
-        sb.table("application_events").insert({
-            "job_id": job_id,
-            "event_type": event_type,
-            "detail": detail,
-        }).execute()
+        row = {"job_id": job_id, "event_type": event_type, "detail": detail}
+        if user_id:
+            row["user_id"] = user_id
+        sb.table("application_events").insert(row).execute()
     except Exception:
-        # Keep core UX unblocked if events table is missing.
         pass
 
 
-def get_event_counts() -> dict[str, int]:
+def get_event_counts(user_id: str | None = None) -> dict[str, int]:
     """Return event counts by type for dashboard analytics."""
     sb = get_client()
     try:
-        result = sb.table("application_events").select("event_type").execute()
+        q = sb.table("application_events").select("event_type")
+        if user_id:
+            q = q.eq("user_id", user_id)
+        result = q.execute()
     except Exception:
         return {}
 
@@ -89,14 +109,12 @@ def log_experiment_run(
     jobs_new: int,
     jobs_qualified: int,
     note: str = "",
+    user_id: str | None = None,
 ):
-    """
-    Persist one pipeline experiment run.
-    Safe no-op if the table does not exist yet.
-    """
+    """Persist one pipeline experiment run. Safe no-op if table is missing."""
     sb = get_client()
     try:
-        sb.table("pipeline_runs").insert({
+        row = {
             "run_label": run_label,
             "scoring_mode": scoring_mode,
             "hybrid_threshold": hybrid_threshold,
@@ -105,23 +123,22 @@ def log_experiment_run(
             "jobs_new": int(jobs_new),
             "jobs_qualified": int(jobs_qualified),
             "note": note or "",
-        }).execute()
+        }
+        if user_id:
+            row["user_id"] = user_id
+        sb.table("pipeline_runs").insert(row).execute()
     except Exception:
         pass
 
 
-def get_recent_runs(limit: int = 10) -> list[dict]:
+def get_recent_runs(limit: int = 10, user_id: str | None = None) -> list[dict]:
     """Fetch recent experiment runs for comparison."""
     sb = get_client()
     try:
-        result = (
-            sb.table("pipeline_runs")
-            .select("*")
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
-        )
-        return result.data or []
+        q = sb.table("pipeline_runs").select("*").order("created_at", desc=True).limit(limit)
+        if user_id:
+            q = q.eq("user_id", user_id)
+        return q.execute().data or []
     except Exception:
         return []
 
@@ -151,20 +168,19 @@ def _event_is_negative(event_type: str, detail: str) -> bool:
     return False
 
 
-def get_personalization_context(event_limit: int = 400) -> dict:
-    """
-    Build lightweight signals from application_events + job rows for queue reranking.
-    Returns empty context if events table missing or no data.
-    """
+def get_personalization_context(event_limit: int = 400, user_id: str | None = None) -> dict:
+    """Build lightweight signals from events + job rows for queue reranking."""
     sb = get_client()
     try:
-        ev_res = (
+        q = (
             sb.table("application_events")
             .select("job_id, event_type, detail, created_at")
             .order("created_at", desc=True)
             .limit(event_limit)
-            .execute()
         )
+        if user_id:
+            q = q.eq("user_id", user_id)
+        ev_res = q.execute()
     except Exception:
         return {"has_signals": False}
 
@@ -176,13 +192,10 @@ def get_personalization_context(event_limit: int = 400) -> dict:
     jobs_by_id: dict[str, dict] = {}
     try:
         for chunk in _chunked(job_ids, 100):
-            jr = (
-                sb.table("job_applications")
-                .select("id, company, title, source")
-                .in_("id", chunk)
-                .execute()
-            )
-            for row in jr.data or []:
+            q = sb.table("job_applications").select("id, company, title, source").in_("id", chunk)
+            if user_id:
+                q = q.eq("user_id", user_id)
+            for row in q.execute().data or []:
                 jobs_by_id[row["id"]] = row
     except Exception:
         return {"has_signals": False}
@@ -277,9 +290,10 @@ def rank_queue_with_personalization(
     *,
     weights: dict | None = None,
     ctx: dict | None = None,
+    user_id: str | None = None,
 ) -> list[dict]:
-    """Mutates each job with _personal_bonus, _effective_score, _personal_hint; sorts descending."""
-    ctx = ctx or get_personalization_context()
+    """Mutate each job with _personal_bonus, _effective_score, _personal_hint; sort descending."""
+    ctx = ctx or get_personalization_context(user_id=user_id)
     for j in jobs:
         b, hint = personalization_bonus(j, ctx, weights=weights)
         base = float(j.get("score") or 0)
@@ -290,10 +304,11 @@ def rank_queue_with_personalization(
     return jobs
 
 
-def get_source_health(apps: list[dict] | None = None, review_min_score: int = 7) -> list[dict]:
-    """Per-source totals, avg score, qualified count, and jobs currently in review queue band."""
+def get_source_health(apps: list[dict] | None = None, review_min_score: int = 7,
+                      user_id: str | None = None) -> list[dict]:
+    """Per-source totals, avg score, qualified count, and review queue share."""
     if apps is None:
-        apps = get_all_applications()
+        apps = get_all_applications(user_id=user_id)
     buckets: dict[str, dict] = {}
     for row in apps:
         src = (row.get("source") or "unknown").strip() or "unknown"
@@ -324,21 +339,20 @@ def get_source_health(apps: list[dict] | None = None, review_min_score: int = 7)
     return out
 
 
-def get_review_queue(min_score: int = 7) -> list[dict]:
+def get_review_queue(min_score: int = 7, user_id: str | None = None) -> list[dict]:
     """Fetch jobs pending review, deduped by (title, company)."""
     sb = get_client()
-    result = (
+    q = (
         sb.table("job_applications")
         .select("*")
         .eq("status", "new")
         .gte("score", min_score)
         .order("score", desc=True)
-        .execute()
     )
-    rows = result.data or []
+    if user_id:
+        q = q.eq("user_id", user_id)
+    rows = q.execute().data or []
 
-    # Deduplicate by (normalized title, normalized company).
-    # When the same job appears on multiple sources, keep the highest-scored copy.
     seen: dict[tuple, dict] = {}
     for row in rows:
         key = (
@@ -347,36 +361,60 @@ def get_review_queue(min_score: int = 7) -> list[dict]:
         )
         if key not in seen or (row.get("score") or 0) > (seen[key].get("score") or 0):
             seen[key] = row
-
     return list(seen.values())
 
 
-def get_manual_queue() -> list[dict]:
-    """Fetch jobs that need manual application (no Easy Apply)."""
+def get_manual_queue(user_id: str | None = None) -> list[dict]:
+    """Fetch jobs that need manual application."""
     sb = get_client()
-    result = (
+    q = (
         sb.table("job_applications")
         .select("*")
         .eq("status", "manual_review")
         .order("score", desc=True)
-        .execute()
     )
-    return result.data or []
+    if user_id:
+        q = q.eq("user_id", user_id)
+    return q.execute().data or []
 
 
-def get_seen_ids() -> set[str]:
-    """Return all job IDs already stored in Supabase."""
+def get_seen_ids(user_id: str | None = None) -> set[str]:
+    """Return all job IDs already stored (scoped to user when provided)."""
     sb = get_client()
-    result = sb.table("job_applications").select("id").execute()
+    q = sb.table("job_applications").select("id")
+    if user_id:
+        q = q.eq("user_id", user_id)
+    result = q.execute()
     return {row["id"] for row in (result.data or [])}
 
 
-def get_all_applications() -> list[dict]:
+def clear_queue(user_id: str | None = None):
+    """Delete all status='new' jobs for the user (clears the review queue)."""
     sb = get_client()
-    result = (
-        sb.table("job_applications")
-        .select("*")
-        .order("score", desc=True)
-        .execute()
-    )
-    return result.data or []
+    q = sb.table("job_applications").delete().eq("status", "new")
+    if user_id:
+        q = q.eq("user_id", user_id)
+    q.execute()
+
+
+def clear_all_data(user_id: str | None = None):
+    """Delete all jobs, events, and pipeline runs for the user."""
+    sb = get_client()
+    if user_id:
+        # Delete events for this user's jobs first (FK constraint)
+        sb.table("application_events").delete().eq("user_id", user_id).execute()
+        sb.table("job_applications").delete().eq("user_id", user_id).execute()
+        sb.table("pipeline_runs").delete().eq("user_id", user_id).execute()
+    else:
+        # CLI / unscoped — wipe rows with no user_id
+        sb.table("application_events").delete().is_("user_id", "null").execute()
+        sb.table("job_applications").delete().is_("user_id", "null").execute()
+        sb.table("pipeline_runs").delete().is_("user_id", "null").execute()
+
+
+def get_all_applications(user_id: str | None = None) -> list[dict]:
+    sb = get_client()
+    q = sb.table("job_applications").select("*").order("score", desc=True)
+    if user_id:
+        q = q.eq("user_id", user_id)
+    return q.execute().data or []

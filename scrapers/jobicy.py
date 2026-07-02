@@ -24,9 +24,10 @@ def _make_id(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:16]
 
 
-def _matches_target(title: str) -> bool:
+def _matches_target(title: str, target_roles: list[str] = None) -> bool:
     t = title.lower()
-    return any(k in t for k in TITLE_KEYWORDS)
+    keywords = [r.lower() for r in target_roles] if target_roles else TITLE_KEYWORDS
+    return any(k in t for k in keywords)
 
 
 def _is_excluded(title: str, desc: str) -> bool:
@@ -39,7 +40,7 @@ def _is_junior(title: str, level: str) -> bool:
     return any(s in t for s in LEVEL_BLOCKLIST)
 
 
-def scrape_jobicy(max_results: int = 50) -> list[dict]:
+def scrape_jobicy(max_results: int = 50, target_roles: list[str] = None, min_salary: int = 0) -> list[dict]:
     jobs = []
     seen = set()
 
@@ -61,16 +62,17 @@ def scrape_jobicy(max_results: int = 50) -> list[dict]:
                 desc = j.get("jobDescription", "")
                 excerpt = j.get("jobExcerpt", "")
 
-                if not _matches_target(title):
+                if not _matches_target(title, target_roles=target_roles):
                     continue
                 if _is_excluded(title, desc):
                     continue
                 if _is_junior(title, level):
                     continue
 
-                # Salary gate — use salaryMin if available
+                # Salary gate — use user's min_salary if set, else config floor
+                effective_min = min_salary if min_salary else MIN_SALARY
                 salary_min = j.get("salaryMin")
-                if salary_min and int(salary_min) < MIN_SALARY:
+                if salary_min and effective_min and int(salary_min) < effective_min:
                     continue
 
                 job_id = _make_id(url)

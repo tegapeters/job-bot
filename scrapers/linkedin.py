@@ -137,7 +137,7 @@ def scrape_linkedin(max_per_query: int = 15, target_roles: list[str] = None) -> 
                                 seen.add(j["id"])
                                 j["location"] = loc.replace("+", " ").replace("%2C", ",")
                                 jobs.append(j)
-                                if len(jobs) >= max_per_query * len(TARGET_ROLES):
+                                if len(jobs) >= max_per_query * len(roles):
                                     return jobs
                     time.sleep(1.2)  # be polite
                 except Exception as e:

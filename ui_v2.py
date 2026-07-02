@@ -3,6 +3,7 @@ Job Pal — Streamlit UI v2 (Techturi branded)
 Run: streamlit run ui_v2.py
 """
 import io
+import re
 from datetime import datetime, timezone
 import streamlit as st
 import pandas as pd
@@ -16,8 +17,12 @@ from tracker import (
     update_status, get_seen_ids, log_event, get_event_counts,
     log_experiment_run, get_recent_runs,
     rank_queue_with_personalization, get_source_health,
+    clear_queue,
+    _scope_id,
 )
-from sessions import save_session, load_session, new_uid
+from sessions import save_session, load_session, clear_session, new_uid
+from auth import render_auth_wall, restore_user_session, get_user_id, get_user_email, sign_out
+from config import REVIEW_MIN_SCORE
 
 # ── Page config ────────────────────────────────────────────────────
 st.set_page_config(
@@ -192,19 +197,77 @@ st.markdown("""
     margin: 0 !important;
   }
 
-  /* ── Primary buttons ── */
-  [data-testid="baseButton-primary"] {
-    background: #8faa28 !important;
-    color: #0e0e0e !important;
-    border: 1px solid #8faa28 !important;
+  /* ── All buttons — base reset ── */
+  div.stButton > button,
+  div[data-testid="stButton"] > button,
+  div[data-testid="stDownloadButton"] > button,
+  div[data-testid="stFormSubmitButton"] > button,
+  [data-testid="baseButton-primary"],
+  [data-testid="baseButton-secondary"] {
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 12px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.1em !important;
+    letter-spacing: 0.05em !important;
+    border-radius: 3px !important;
+    transition: background 0.15s, border-color 0.15s !important;
   }
+
+  /* ── Primary buttons (white) ── */
+  div.stButton > button[kind="primary"],
+  div[data-testid="stButton"] > button[kind="primary"],
+  div[data-testid="stFormSubmitButton"] > button[kind="primary"],
+  [data-testid="baseButton-primary"] {
+    background: #F5F4EE !important;
+    color: #0A0A0B !important;
+    border: 1px solid #F5F4EE !important;
+    font-weight: 600 !important;
+  }
+  div.stButton > button[kind="primary"]:hover,
+  div[data-testid="stButton"] > button[kind="primary"]:hover,
   [data-testid="baseButton-primary"]:hover {
-    background: #a0c030 !important;
-    border-color: #a0c030 !important;
+    background: #ffffff !important;
+    border-color: #ffffff !important;
+  }
+
+  /* ── Secondary / default buttons (dark grey) ── */
+  div.stButton > button[kind="secondary"],
+  div.stButton > button:not([kind="primary"]),
+  div[data-testid="stButton"] > button[kind="secondary"],
+  div[data-testid="stDownloadButton"] > button,
+  [data-testid="baseButton-secondary"] {
+    background: #1f1f22 !important;
+    color: #c8c8c0 !important;
+    border: 1px solid #2e2e32 !important;
+    font-weight: 500 !important;
+  }
+  div.stButton > button[kind="secondary"]:hover,
+  div.stButton > button:not([kind="primary"]):hover,
+  div[data-testid="stButton"] > button[kind="secondary"]:hover,
+  div[data-testid="stDownloadButton"] > button:hover,
+  [data-testid="baseButton-secondary"]:hover {
+    background: #2a2a2e !important;
+    border-color: #3e3e44 !important;
+    color: #F5F4EE !important;
+  }
+
+  /* ── Multiselect tags ── */
+  [data-testid="stMultiSelect"] span[data-baseweb="tag"],
+  span[data-baseweb="tag"] {
+    background: #2a2a2e !important;
+    color: #c8c8c0 !important;
+    border: 1px solid #3e3e44 !important;
+  }
+  [data-testid="stMultiSelect"] span[data-baseweb="tag"] span,
+  span[data-baseweb="tag"] span {
+    color: #c8c8c0 !important;
+  }
+
+  /* ── Slider thumb + track ── */
+  [data-testid="stSlider"] [role="slider"] {
+    background: #c8c8c0 !important;
+    border-color: #c8c8c0 !important;
+  }
+  [data-testid="stSlider"] [data-testid="stSliderThumbValue"] {
+    color: #c8c8c0 !important;
   }
 
   /* ── Footer ── */
@@ -220,6 +283,12 @@ st.markdown("""
   }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ── Auth wall — must be authenticated to use the app ──────────────
+render_auth_wall()
+restore_user_session()
+_USER_ID = get_user_id()  # set once per Streamlit run, passed to all tracker calls
 
 
 # ── Session persistence: restore from ?uid= query param ───────────
@@ -256,7 +325,15 @@ with st.sidebar:
     <div class="tt-product">Job Pal</div>
     """, unsafe_allow_html=True)
 
-    # Show resume status in sidebar
+    # Show logged-in user + resume status
+    user_email = get_user_email() or ""
+    st.markdown(
+        f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#4A4A45;'
+        f'letter-spacing:0.1em;padding:0 20px 4px;overflow:hidden;text-overflow:ellipsis;'
+        f'white-space:nowrap" title="{user_email}">{user_email}</div>',
+        unsafe_allow_html=True,
+    )
+
     if st.session_state.get("resume_text"):
         st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#D4FF3A;letter-spacing:0.15em;padding:0 20px 12px">✓ RESUME LOADED</div>', unsafe_allow_html=True)
     else:
@@ -269,7 +346,10 @@ with st.sidebar:
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="tt-footer">techturi.org · Tega Eshareturi</div>', unsafe_allow_html=True)
+    if st.button("Sign Out", use_container_width=True, key="sidebar_signout"):
+        sign_out()
+        st.rerun()
+    st.markdown('<div class="tt-footer" style="margin-top:8px">techturi.org · Tega Eshareturi</div>', unsafe_allow_html=True)
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -284,16 +364,16 @@ def status_tag(status):
     return f'<span class="{cls}">{label}</span>'
 
 def safe_get_apps():
-    """Fetch all applications, showing a clean error if Supabase is unreachable."""
+    """Fetch all applications for the current user."""
     try:
-        return get_all_applications()
+        return get_all_applications(user_id=_USER_ID)
     except Exception as e:
         st.error(f"Cannot connect to database. Check Supabase secrets in Streamlit Cloud settings. Error: `{e}`")
         st.stop()
 
 def safe_get_queue(min_score=8):
     try:
-        return get_review_queue(min_score=min_score)
+        return get_review_queue(min_score=min_score, user_id=_USER_ID)
     except Exception as e:
         st.error(f"Cannot connect to database. Check Supabase secrets. Error: `{e}`")
         st.stop()
@@ -367,12 +447,12 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             )
             if new_status != "— no change —":
                 if st.button("Save", key=f"{key_prefix}_save_{job['id']}", type="secondary"):
-                    update_status(job["id"], new_status)
+                    update_status(job["id"], new_status, user_id=_USER_ID)
                     auto_event = STATUS_OUTCOME_MAP.get(new_status)
                     if auto_event:
-                        log_event(job["id"], auto_event, f"status moved to {new_status}")
+                        log_event(job["id"], auto_event, f"status moved to {new_status}", user_id=_USER_ID)
                     else:
-                        log_event(job["id"], "status_change", f"{job.get('status', 'unknown')} -> {new_status}")
+                        log_event(job["id"], "status_change", f"{job.get('status', 'unknown')} -> {new_status}", user_id=_USER_ID)
                     st.success(f"→ {new_status}")
                     st.rerun()
 
@@ -391,16 +471,55 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 placeholder="e.g. recruiter replied in 2 days",
             )
             if st.button("Log Signal", key=f"{key_prefix}_signal_save_{job['id']}"):
-                log_event(job["id"], signal, note.strip())
+                log_event(job["id"], signal, note.strip(), user_id=_USER_ID)
                 st.success(f"Logged: {signal}")
                 st.rerun()
 
         if job.get("cover_letter"):
-            st.markdown("**Cover Letter**")
+            cl_col, dl_col = st.columns([5, 1])
+            with cl_col:
+                st.markdown("**Cover Letter**")
+            with dl_col:
+                import io
+                from docx import Document
+                from docx.shared import Pt
+                doc = Document()
+                doc.add_heading(f"{job.get('title', '')} — {job.get('company', '')}", level=1)
+                for para in job["cover_letter"].split("\n"):
+                    if para.strip():
+                        doc.add_paragraph(para.strip())
+                buf = io.BytesIO()
+                doc.save(buf)
+                buf.seek(0)
+                safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", f"{job.get('company','')}_{job.get('title','')}").strip("_")
+                st.download_button(
+                    "⬇ .docx",
+                    data=buf,
+                    file_name=f"cover_letter_{safe_name}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key=f"dl_{job['id']}",
+                )
             st.markdown(
                 f'<div class="cover-letter">{job["cover_letter"]}</div>',
                 unsafe_allow_html=True,
             )
+
+def _categorize(title: str) -> str:
+    t = (title or "").lower()
+    if any(k in t for k in ["genai", "gen ai", "generative", "llm", "ai engineer", "ml engineer", "machine learning"]):
+        return "AI / ML"
+    if any(k in t for k in ["data engineer", "etl", "pipeline", "databricks", "spark", "platform engineer"]):
+        return "Data Engineering"
+    if any(k in t for k in ["analytics engineer", "data analyst", "business intelligence", "bi engineer", "data scientist"]):
+        return "Analytics"
+    if any(k in t for k in ["program manager", "project manager", "tpm", "technical program", "scrum"]):
+        return "Program Management"
+    if any(k in t for k in ["software engineer", "backend", "frontend", "full stack", "fullstack", "swe"]):
+        return "Software Engineering"
+    if any(k in t for k in ["data architect", "cloud architect", "solutions architect"]):
+        return "Architecture"
+    return "Other"
+
 
 def page_header(eyebrow, title_html):
     st.markdown(f"""
@@ -477,17 +596,38 @@ if page == "Setup":
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Refresh warning ──────────────────────────────────────────
-    if st.session_state.get("session_uid"):
-        st.success("✓ Your resume is saved. Bookmark this URL — it will reload your resume automatically on return.")
+    # ── Resume status + start-fresh action ───────────────────────
+    if st.session_state.get("resume_text"):
+        status_col, clear_col = st.columns([3, 1])
+        with status_col:
+            st.success("✓ Resume loaded — update below and hit Save to switch resumes.")
+        with clear_col:
+            if st.button("Start Fresh", use_container_width=True, key="setup_start_fresh"):
+                if st.session_state.get("_confirm_setup_clear"):
+                    from tracker import clear_all_data
+                    clear_all_data(user_id=_USER_ID)
+                    if _USER_ID:
+                        clear_session(_USER_ID)
+                    for _k in ("resume_text", "target_roles", "min_salary", "session_uid",
+                               "_suggested_roles", "_roles_text_area", "_confirm_setup_clear",
+                               "_session_restored"):
+                        st.session_state.pop(_k, None)
+                    st.session_state["_user_session_restored_for"] = _USER_ID
+                    st.query_params.clear()
+                    st.rerun()
+                else:
+                    st.session_state["_confirm_setup_clear"] = True
+        if st.session_state.get("_confirm_setup_clear"):
+            st.warning("This clears all jobs, pipeline runs, and your saved resume. Click **Start Fresh** again to confirm.")
     else:
-        st.info("Upload or paste your resume below, then hit **Save**. Job Pal will generate a personal link that reloads your resume on future visits.")
+        st.info("Upload or paste your resume below, then hit **Save**.")
 
     # ── Resume input: upload or paste ────────────────────────────
     st.markdown('<div class="section-label">Your Resume</div>', unsafe_allow_html=True)
     tab_upload, tab_paste = st.tabs(["Upload File", "Paste Text"])
 
-    extracted_text = None
+    uploaded_text = None   # from file upload
+    pasted_text   = None   # from paste tab
 
     with tab_upload:
         uploaded = st.file_uploader(
@@ -501,17 +641,17 @@ if page == "Setup":
                 if uploaded.type == "application/pdf":
                     import fitz  # PyMuPDF
                     doc = fitz.open(stream=uploaded.read(), filetype="pdf")
-                    extracted_text = "\n".join(page.get_text() for page in doc)
+                    uploaded_text = "\n".join(page.get_text() for page in doc)
                 elif uploaded.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                     from docx import Document
                     doc = Document(uploaded)
-                    extracted_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+                    uploaded_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
                 else:
-                    extracted_text = uploaded.read().decode("utf-8", errors="ignore")
+                    uploaded_text = uploaded.read().decode("utf-8", errors="ignore")
 
-                st.success(f"✓ {uploaded.name} extracted — {len(extracted_text)} characters")
+                st.success(f"✓ {uploaded.name} extracted — {len(uploaded_text)} characters")
                 st.markdown(
-                    f'<div class="cover-letter" style="max-height:200px;overflow-y:auto">{extracted_text[:800]}{"..." if len(extracted_text) > 800 else ""}</div>',
+                    f'<div class="cover-letter" style="max-height:200px;overflow-y:auto">{uploaded_text[:800]}{"..." if len(uploaded_text) > 800 else ""}</div>',
                     unsafe_allow_html=True,
                 )
             except Exception as e:
@@ -520,13 +660,16 @@ if page == "Setup":
     with tab_paste:
         pasted = st.text_area(
             "Paste resume text",
-            value=st.session_state.get("resume_text", ""),
+            value=st.session_state.get("resume_text") or "",
             height=280,
             placeholder="Paste your full resume as plain text — work history, skills, education, certifications...",
             label_visibility="collapsed",
         )
         if pasted.strip():
-            extracted_text = pasted.strip()
+            pasted_text = pasted.strip()
+
+    # Upload takes priority over paste; paste is fallback
+    extracted_text = uploaded_text or pasted_text
 
     # ── Salary preference ────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:20px">Minimum Salary (optional)</div>', unsafe_allow_html=True)
@@ -552,8 +695,8 @@ if page == "Setup":
         "$200,000+": 200_000,
         "$220,000+": 220_000,
     }
-    current_min = st.session_state.get("min_salary", 140_000)
-    current_label = next((k for k, v in salary_map.items() if v == current_min), "$140,000+")
+    current_min = st.session_state.get("min_salary", 0)
+    current_label = next((k for k, v in salary_map.items() if v == current_min), "No minimum")
     selected_salary = st.selectbox(
         "Minimum salary",
         salary_options,
@@ -563,25 +706,56 @@ if page == "Setup":
 
     # ── Target roles ─────────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
-    default_roles = "\n".join(st.session_state.get("target_roles", [
-        "Data Engineer",
-        "AI Engineer",
-        "Senior AI Engineer",
-        "GenAI Engineer",
-        "Machine Learning Engineer",
-        "Senior ML Engineer",
-        "Analytics Engineer",
-        "Senior Analytics Engineer",
-        "Senior Data Analyst",
-        "Senior Business Intelligence Engineer",
-        "Senior Technical Program Manager",
-        "Technical Project Manager",
-    ]))
+
+    saved_roles = st.session_state.get("target_roles") or []
+    default_roles = "\n".join(saved_roles)
+
+    suggest_col, _ = st.columns([1, 3])
+    with suggest_col:
+        suggest_btn = st.button(
+            "Suggest from resume",
+            disabled=not bool(extracted_text),
+            help="Uses AI to infer target job titles from your resume. Paste or upload your resume first.",
+        )
+
+    if suggest_btn and extracted_text:
+        with st.spinner("Reading your resume..."):
+            try:
+                import anthropic as _ant
+                from config import ANTHROPIC_API_KEY
+                _ac = _ant.Anthropic(api_key=ANTHROPIC_API_KEY)
+                _msg = _ac.messages.create(
+                    model="claude-haiku-4-5",
+                    max_tokens=300,
+                    messages=[{
+                        "role": "user",
+                        "content": (
+                            "Based on this resume, list 8–12 specific job titles this person should target "
+                            "in their job search. Output ONLY the job titles, one per line, no bullets, "
+                            "no explanations, no numbering. Include seniority level where appropriate.\n\n"
+                            f"RESUME:\n{extracted_text[:3000]}"
+                        ),
+                    }],
+                )
+                # Store in session state and also directly set the text area value
+                st.session_state["_suggested_roles"] = _msg.content[0].text.strip()
+                st.session_state["_roles_text_area"] = st.session_state["_suggested_roles"]
+            except Exception as e:
+                st.warning(f"Could not suggest roles: {e}")
+
+    # Use a stable session key for the text area value — avoids pop() destroying it on rerun
+    if "_suggested_roles" in st.session_state:
+        role_value = st.session_state.pop("_suggested_roles")
+        st.session_state["_roles_text_area"] = role_value
+    else:
+        # Fall back to saved roles; empty string when session was cleared
+        role_value = st.session_state.get("_roles_text_area") or default_roles
+
     roles_input = st.text_area(
         "Target roles",
-        value=default_roles,
-        height=140,
-        placeholder="Senior Business Analyst\nData Engineer\nAI Engineer",
+        value=role_value,
+        height=180,
+        placeholder="Paste your resume above first, then click Suggest — or type roles manually.\nOne role per line.",
         label_visibility="collapsed",
     )
 
@@ -595,12 +769,13 @@ if page == "Setup":
             st.session_state["target_roles"] = roles
             st.session_state["min_salary"] = salary_map[selected_salary]
 
-            # Persist to Supabase so the resume survives page refresh
-            uid = st.session_state.get("session_uid") or new_uid()
+            # Persist to Supabase — use auth user_id as key so resume is tied to account
+            uid = _USER_ID or st.session_state.get("session_uid") or new_uid()
             try:
                 save_session(uid, clean_text, roles)
                 st.session_state["session_uid"] = uid
-                st.query_params["uid"] = uid
+                if not _USER_ID:
+                    st.query_params["uid"] = uid
                 st.success(
                     f"✓ Resume saved. Bookmark this page — your resume will reload automatically. "
                     f"Click **Run Pipeline** to start."
@@ -652,14 +827,14 @@ elif page == "Dashboard":
         if status_counts:
             st.bar_chart(pd.Series(status_counts), color="#D4FF3A")
 
-    event_counts = get_event_counts()
+    event_counts = get_event_counts(user_id=_USER_ID)
     if event_counts:
         st.markdown('<div class="section-label" style="margin-top:28px">Outcome Signals</div>', unsafe_allow_html=True)
         st.bar_chart(pd.Series(event_counts), color="#D4FF3A")
 
     st.markdown('<div class="section-label" style="margin-top:28px">Source health</div>', unsafe_allow_html=True)
     st.caption("Per job board: volume, average score, share scoring 7+, and how many are waiting in Review Queue.")
-    health_df = pd.DataFrame(get_source_health(apps=apps, review_min_score=8))
+    health_df = pd.DataFrame(get_source_health(apps=apps, review_min_score=8, user_id=_USER_ID))
     if not health_df.empty:
         st.dataframe(health_df, use_container_width=True, hide_index=True)
     else:
@@ -675,15 +850,15 @@ elif page == "Dashboard":
 # ═══════════════════════════════════════════════════════════════════
 elif page == "Review Queue":
     page_header("Review Queue", "Jobs worth <em>applying to.</em>")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">AI fit score 8+ · Status updates save instantly</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">AI fit score 7+ · Status updates save instantly</div>', unsafe_allow_html=True)
 
-    queue = safe_get_queue(min_score=8)
+    queue = safe_get_queue(min_score=7)
     if not queue:
         st.success("Queue is empty — nothing to review.")
         st.stop()
 
     # ── Queue filters ─────────────────────────────────────────────
-    col_f1, col_f2 = st.columns(2)
+    col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
         hide_old = st.toggle(
             "Hide stale listings (>14 days)",
@@ -697,10 +872,14 @@ elif page == "Review Queue":
             index=0,
             help="Limit visible jobs — sorted by score before the cutoff.",
         )
+    with col_f3:
+        all_cats = sorted(set(_categorize(j.get("title","")) for j in queue))
+        cat_filter = st.multiselect("Category", all_cats, default=all_cats)
 
     total_in_db = len(queue)
     if hide_old:
         queue = [j for j in queue if (_days_in_queue(j) or 0) <= 14]
+    queue = [j for j in queue if _categorize(j.get("title","")) in cat_filter]
     stale_hidden = total_in_db - len(queue)
 
     personalize = st.toggle(
@@ -740,23 +919,28 @@ elif page == "Review Queue":
             preview_n = st.slider("Preview rows", 5, 25, 10, 1)
             base = sorted(queue, key=lambda j: j.get("score") or 0, reverse=True)
             reranked = [dict(j) for j in queue]
-            rank_queue_with_personalization(reranked, weights=weights)
-
-            base_top = pd.DataFrame(base[:preview_n])[["title", "company", "score", "source"]]
-            new_top = pd.DataFrame(reranked[:preview_n])[["title", "company", "score", "_effective_score", "_personal_bonus", "source"]]
+            rank_queue_with_personalization(reranked, weights=weights, user_id=_USER_ID)
 
             col_a, col_b = st.columns(2)
             with col_a:
                 st.markdown("**Before (AI score only)**")
-                st.dataframe(base_top, use_container_width=True, hide_index=True)
+                if base:
+                    base_top = pd.DataFrame(base[:preview_n])[["title", "company", "score", "source"]]
+                    st.dataframe(base_top, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No jobs in queue.")
             with col_b:
                 st.markdown("**After (personalized)**")
-                st.dataframe(new_top, use_container_width=True, hide_index=True)
+                if reranked:
+                    new_top = pd.DataFrame(reranked[:preview_n])[["title", "company", "score", "_effective_score", "_personal_bonus", "source"]]
+                    st.dataframe(new_top, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No jobs in queue.")
 
             if st.button("Reset personalization defaults"):
                 st.rerun()
 
-        rank_queue_with_personalization(queue, weights=weights)
+        rank_queue_with_personalization(queue, weights=weights, user_id=_USER_ID)
     else:
         queue.sort(key=lambda j: j.get("score") or 0, reverse=True)
 
@@ -768,7 +952,18 @@ elif page == "Review Queue":
         parts.append(f"{stale_hidden} stale hidden")
     if cap_hidden:
         parts.append(f"{cap_hidden} more below limit")
-    st.markdown(f'<div class="section-label">{" · ".join(parts)}</div>', unsafe_allow_html=True)
+
+    summary_col, purge_col = st.columns([4, 1])
+    with summary_col:
+        st.markdown(f'<div class="section-label">{" · ".join(parts)}</div>', unsafe_allow_html=True)
+    with purge_col:
+        stale_jobs = [j for j in safe_get_queue(min_score=7) if (_days_in_queue(j) or 0) > 14]
+        if stale_jobs:
+            if st.button(f"Dismiss {len(stale_jobs)} stale", type="secondary", help="Mark all jobs older than 14 days as Skipped"):
+                for j in stale_jobs:
+                    update_status(j["id"], "skipped", user_id=_USER_ID)
+                st.success(f"Dismissed {len(stale_jobs)} stale jobs.")
+                st.rerun()
 
     for job in display_queue:
         job_card(job, "rq", ["applied", "skipped", "rejected"])
@@ -790,11 +985,18 @@ elif page == "Applied":
 
     st.markdown(f'<div class="section-label">{len(applied)} applications sent</div>', unsafe_allow_html=True)
 
-    search = st.text_input("Search", placeholder="Company or title...")
+    f1, f2 = st.columns([3, 1])
+    with f1:
+        search = st.text_input("Search", placeholder="Company or title...")
+    with f2:
+        cover_letter_only = st.toggle("Cover letter only", value=False)
+
     if search:
         applied = [a for a in applied if
                    search.lower() in (a.get("title") or "").lower() or
                    search.lower() in (a.get("company") or "").lower()]
+    if cover_letter_only:
+        applied = [a for a in applied if a.get("cover_letter")]
 
     for job in sorted(applied, key=lambda x: x.get("score") or 0, reverse=True):
         job_card(job, "ap", ["interview", "rejected", "skipped", "application_closed"])
@@ -833,19 +1035,29 @@ elif page == "All Applications":
 
     df = pd.DataFrame(apps)
 
-    col1, col2, col3 = st.columns(3)
+    df["category"] = df["title"].apply(_categorize)
+    categories = sorted(df["category"].unique().tolist())
+
+    col1, col2 = st.columns(2)
     with col1:
         status_filter = st.multiselect(
             "Status", df["status"].unique().tolist(),
             default=df["status"].unique().tolist(),
         )
     with col2:
-        min_score = st.slider("Min score", 0, 10, 0)
+        category_filter = st.multiselect(
+            "Category", categories, default=categories,
+        )
+
+    col3, col4 = st.columns(2)
     with col3:
+        min_score = st.slider("Min score", 0, 10, 0)
+    with col4:
         search = st.text_input("Search title / company")
 
     filtered = df[
         df["status"].isin(status_filter) &
+        df["category"].isin(category_filter) &
         (df["score"].fillna(0) >= min_score)
     ]
     if search:
@@ -857,7 +1069,7 @@ elif page == "All Applications":
 
     st.markdown(f'<div class="section-label">{len(filtered)} results</div>', unsafe_allow_html=True)
 
-    display_cols = ["title", "company", "location", "score", "status", "seniority", "salary_match", "source"]
+    display_cols = ["category", "title", "company", "location", "score", "status", "seniority", "salary_match", "source"]
     available = [c for c in display_cols if c in filtered.columns]
     st.dataframe(filtered[available], use_container_width=True, hide_index=True)
 
@@ -871,7 +1083,7 @@ elif page == "All Applications":
         selected_id = job_options[selected_label]
         new_status = st.selectbox("New status", ["new", "applied", "interview", "rejected", "skipped", "application_closed"])
         if st.button("Update Status", type="primary"):
-            update_status(selected_id, new_status)
+            update_status(selected_id, new_status, user_id=_USER_ID)
             st.success(f"Updated → {new_status}")
             st.rerun()
 
@@ -931,18 +1143,30 @@ elif page == "Run Pipeline":
         if st.button("▶ Run Full Pipeline", type="primary", use_container_width=True):
             with st.spinner("Scraping jobs..."):
                 from scrapers import scrape_all
-                jobs = scrape_all(target_roles=st.session_state.get("target_roles") or None)
+                jobs = scrape_all(
+                    target_roles=st.session_state.get("target_roles") or None,
+                    min_salary=st.session_state.get("min_salary", 0),
+                )
 
             st.info(f"Scraped {len(jobs)} jobs total")
 
             from tracker import get_seen_ids
-            seen = get_seen_ids()
-            new_jobs = [j for j in jobs if j["id"] not in seen]
+            seen = get_seen_ids(user_id=_USER_ID)
+            new_jobs = [j for j in jobs if _scope_id(j["id"], _USER_ID) not in seen]
 
-            # Beta cap
+            # Beta cap: sort by cheap score first so the best 50 are selected
             if len(new_jobs) > BETA_JOB_LIMIT:
-                st.info(f"Beta limit: capping at {BETA_JOB_LIMIT} of {len(new_jobs)} new jobs")
-                new_jobs = new_jobs[:BETA_JOB_LIMIT]
+                st.info(f"Beta limit: pre-ranking {len(new_jobs)} new jobs, keeping top {BETA_JOB_LIMIT}...")
+                from agent import score_job_cheap
+                _resume = st.session_state.get("resume_text")
+                _roles  = st.session_state.get("target_roles")
+                _sal    = st.session_state.get("min_salary", 0)
+                for j in new_jobs:
+                    score_job_cheap(j, resume_text=_resume, target_roles=_roles, min_salary=_sal)
+                new_jobs = sorted(new_jobs, key=lambda j: j.get("score") or 0, reverse=True)[:BETA_JOB_LIMIT]
+                # Reset scores so Pass 2 re-scores cleanly
+                for j in new_jobs:
+                    j["score"] = None
             else:
                 st.info(f"{len(new_jobs)} new (unseen) jobs to score")
 
@@ -961,11 +1185,13 @@ elif page == "Run Pipeline":
                     scoring_backend=scoring_mode,
                     enable_cover_letters=enable_letters,
                     hybrid_claude_min_score=hybrid_min,
+                    min_salary=st.session_state.get("min_salary", 0),
+                    target_roles=st.session_state.get("target_roles") or [],
                 )
 
                 progress.progress(80, text=f"Writing cover letters for {len(qualified)} qualified jobs...")
                 from tracker import upsert_jobs
-                upsert_jobs(all_scored)
+                upsert_jobs(all_scored, user_id=_USER_ID)
 
                 log_experiment_run(
                     run_label=run_label.strip(),
@@ -976,10 +1202,11 @@ elif page == "Run Pipeline":
                     jobs_new=len(new_jobs),
                     jobs_qualified=len(qualified),
                     note=run_note.strip(),
+                    user_id=_USER_ID,
                 )
 
                 progress.progress(100, text="Done.")
-                st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored 8+ added to Review Queue.")
+                st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ added to Review Queue.")
 
                 if qualified:
                     st.markdown('<div class="section-label" style="margin-top:20px">Qualified Jobs</div>', unsafe_allow_html=True)
@@ -992,7 +1219,10 @@ elif page == "Run Pipeline":
         if st.button("▶ Scrape Only", use_container_width=True):
             with st.spinner("Scraping..."):
                 from scrapers import scrape_all
-                jobs = scrape_all(target_roles=st.session_state.get("target_roles") or None)
+                jobs = scrape_all(
+                    target_roles=st.session_state.get("target_roles") or None,
+                    min_salary=st.session_state.get("min_salary", 0),
+                )
             st.success(f"Scraped {len(jobs)} jobs")
             preview = pd.DataFrame(jobs[:20])[["title", "company", "location", "source"]]
             st.dataframe(preview, use_container_width=True, hide_index=True)
@@ -1011,7 +1241,7 @@ elif page == "Run Pipeline":
     except Exception as e:
         st.warning(f"Could not load stats — check Supabase connection. ({e})")
 
-    recent_runs = get_recent_runs(limit=8)
+    recent_runs = get_recent_runs(limit=8, user_id=_USER_ID)
     if recent_runs:
         st.markdown('<div class="section-label" style="margin-top:24px">Recent Experiment Runs</div>', unsafe_allow_html=True)
         run_df = enrich_experiment_runs_df(pd.DataFrame(recent_runs))
@@ -1045,3 +1275,18 @@ elif page == "Run Pipeline":
             mime="text/csv",
             key="download_pipeline_runs_csv",
         )
+
+    # ── Clear queue (pipeline-only reset, keeps resume) ───────────
+    st.markdown('<div class="section-label" style="margin-top:36px"></div>', unsafe_allow_html=True)
+    cq_col, _ = st.columns([1, 3])
+    with cq_col:
+        if st.button("Clear Review Queue", key="btn_clear_queue", use_container_width=True,
+                     help="Deletes all unreviewed jobs so you can run a fresh pipeline. Keeps applied/interview history."):
+            if st.session_state.get("_confirm_clear_queue"):
+                clear_queue(user_id=_USER_ID)
+                st.session_state.pop("_confirm_clear_queue", None)
+                st.success("✓ Review queue cleared. Run Pipeline to refill it.")
+                st.rerun()
+            else:
+                st.session_state["_confirm_clear_queue"] = True
+                st.warning("Clears all unreviewed jobs. Click again to confirm.")
