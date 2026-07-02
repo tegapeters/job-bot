@@ -29,7 +29,7 @@ st.set_page_config(
     page_title="Job Pal · techturi",
     page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 # ── Brand styles ───────────────────────────────────────────────────
@@ -280,6 +280,104 @@ st.markdown("""
     padding-top: 8px;
     border-top: 1px solid #1f1f22;
     margin-top: 4px;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     MOBILE  (≤ 768px)
+     ══════════════════════════════════════════════════════════════ */
+  @media (max-width: 768px) {
+
+    /* ── Main content padding ── */
+    .main .block-container {
+      padding-left: 16px !important;
+      padding-right: 16px !important;
+      padding-top: 16px !important;
+    }
+
+    /* ── Stack all Streamlit columns ── */
+    [data-testid="stHorizontalBlock"] {
+      flex-wrap: wrap !important;
+      gap: 0 !important;
+    }
+    [data-testid="column"] {
+      min-width: 100% !important;
+      width: 100% !important;
+      flex: 1 1 100% !important;
+    }
+
+    /* ── Page header ── */
+    .page-header { margin-bottom: 20px; padding-bottom: 16px; }
+    .page-header h1 {
+      font-size: 28px !important;
+      letter-spacing: -0.02em !important;
+    }
+
+    /* ── Auth / landing hero ── */
+    div[style*="max-width:440px"],
+    div[style*="max-width: 440px"] {
+      margin-top: 32px !important;
+    }
+    div[style*="font-size:42px"],
+    div[style*="font-size: 42px"] {
+      font-size: 30px !important;
+    }
+
+    /* ── Metric cards: smaller value, tighter padding ── */
+    .metric-card { padding: 14px 16px; }
+    .metric-card .value { font-size: 26px; }
+
+    /* ── Buttons: bigger tap targets ── */
+    div.stButton > button,
+    div[data-testid="stButton"] > button,
+    div[data-testid="stDownloadButton"] > button,
+    div[data-testid="stFormSubmitButton"] > button {
+      min-height: 48px !important;
+      font-size: 13px !important;
+    }
+
+    /* ── Cover letter: smaller mono text ── */
+    .cover-letter {
+      font-size: 11px !important;
+      padding: 14px 16px !important;
+      line-height: 1.7 !important;
+    }
+
+    /* ── Pipeline card ── */
+    .pipeline-card { padding: 16px; }
+    .pipeline-card h4 { font-size: 18px !important; }
+
+    /* ── Section label spacing ── */
+    .section-label { margin-bottom: 12px; }
+
+    /* ── Tabs: smaller text ── */
+    [data-testid="stTabs"] button {
+      font-size: 11px !important;
+      padding: 6px 10px !important;
+    }
+
+    /* ── Expander header ── */
+    [data-testid="stExpander"] summary {
+      font-size: 13px !important;
+      padding: 10px 14px !important;
+    }
+
+    /* ── Sidebar logo on mobile ── */
+    .tt-logo { font-size: 17px !important; padding: 20px 16px 0 !important; }
+    .tt-product { padding: 4px 16px 16px !important; }
+
+    /* ── Sliders: wider touch area ── */
+    [data-testid="stSlider"] [role="slider"] {
+      width: 22px !important;
+      height: 22px !important;
+    }
+
+    /* ── Dataframes: allow horizontal scroll ── */
+    [data-testid="stDataFrame"] {
+      overflow-x: auto !important;
+    }
+    [data-testid="stDataFrame"] > div {
+      min-width: 480px;
+    }
   }
 </style>
 """, unsafe_allow_html=True)
