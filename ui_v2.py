@@ -866,7 +866,6 @@ if page == "Setup":
             st.session_state["resume_text"] = clean_text
             st.session_state["target_roles"] = roles
             st.session_state["min_salary"] = salary_map[selected_salary]
-            st.session_state.pop("ev_cities", None)  # re-detect cities from new resume
 
             # Persist to Supabase — use auth user_id as key so resume is tied to account
             uid = _USER_ID or st.session_state.get("session_uid") or new_uid()
@@ -1209,18 +1208,14 @@ elif page == "Events":
 
     from agent import score_events, extract_cities_from_resume
 
-    # ── Auto-detect cities from resume ────────────────────────────
+    # ── City list: detected from resume + manually added ─────────
     resume_text = st.session_state.get("resume_text")
-    detected = extract_cities_from_resume(resume_text) if resume_text else []
-    if "Houston" not in detected:
-        detected = ["Houston"] + detected
-    if "ev_cities" not in st.session_state:
-        st.session_state["ev_cities"] = detected
-    else:
-        # Merge: keep any manually added cities, always ensure Houston is present
-        for city in detected:
-            if city not in st.session_state["ev_cities"]:
-                st.session_state["ev_cities"].insert(0, city)
+    resume_cities = extract_cities_from_resume(resume_text) if resume_text else []
+    if "Houston" not in resume_cities:
+        resume_cities = ["Houston"] + resume_cities
+
+    manual_cities = st.session_state.get("ev_manual_cities", [])
+    all_cities = resume_cities + [c for c in manual_cities if c not in resume_cities]
 
     # ── Controls ──────────────────────────────────────────────────
     ctrl_col1, ctrl_col2 = st.columns([3, 1])
@@ -1228,7 +1223,7 @@ elif page == "Events":
         ev_min_score = st.selectbox(
             "Min relevance",
             [1, 3, 5, 7],
-            index=2,  # default 5 — filters concerts/social, keeps professional events
+            index=2,
             label_visibility="collapsed",
             help="Minimum relevance score to show",
         )
@@ -1241,16 +1236,16 @@ elif page == "Events":
     with city_cols[0]:
         selected_cities = st.multiselect(
             "Cities to search",
-            options=st.session_state["ev_cities"],
-            default=st.session_state["ev_cities"],
+            options=all_cities,
+            default=all_cities,
             label_visibility="collapsed",
         )
     with city_cols[1]:
         new_city = st.text_input("Add city", placeholder="Dallas…",
                                  label_visibility="collapsed", key="ev_new_city")
-        if new_city.strip() and new_city.strip() not in st.session_state["ev_cities"]:
+        if new_city.strip() and new_city.strip() not in all_cities:
             if st.button("Add", key="ev_add_city"):
-                st.session_state["ev_cities"].append(new_city.strip())
+                st.session_state.setdefault("ev_manual_cities", []).append(new_city.strip())
                 st.rerun()
 
     cities_to_scrape = selected_cities
