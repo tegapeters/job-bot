@@ -1211,12 +1211,16 @@ elif page == "Events":
 
     # ── Auto-detect cities from resume ────────────────────────────
     resume_text = st.session_state.get("resume_text")
+    detected = extract_cities_from_resume(resume_text) if resume_text else []
+    if "Houston" not in detected:
+        detected = ["Houston"] + detected
     if "ev_cities" not in st.session_state:
-        detected = extract_cities_from_resume(resume_text) if resume_text else []
-        # Always include Houston — it's the primary scraping target
-        if "Houston" not in detected:
-            detected = ["Houston"] + detected
         st.session_state["ev_cities"] = detected
+    else:
+        # Merge: keep any manually added cities, always ensure Houston is present
+        for city in detected:
+            if city not in st.session_state["ev_cities"]:
+                st.session_state["ev_cities"].insert(0, city)
 
     # ── Controls ──────────────────────────────────────────────────
     ctrl_col1, ctrl_col2 = st.columns([3, 1])
