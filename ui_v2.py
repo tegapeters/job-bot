@@ -1232,21 +1232,32 @@ elif page == "Events":
 
     # City tags — auto-detected + editable
     st.markdown('<div class="section-label">Cities</div>', unsafe_allow_html=True)
-    city_cols = st.columns([3, 1])
-    with city_cols[0]:
-        selected_cities = st.multiselect(
-            "Cities to search",
-            options=all_cities,
-            default=all_cities,
+    selected_cities = st.multiselect(
+        "Cities to scrape",
+        options=all_cities,
+        default=all_cities,
+        label_visibility="collapsed",
+        help="Uncheck a city to exclude it. Use the field below to add more.",
+    )
+
+    add_col, btn_col = st.columns([4, 1])
+    with add_col:
+        new_city = st.text_input(
+            "Add another city",
+            placeholder="e.g. Dallas, Austin, New York…",
+            key="ev_new_city",
             label_visibility="collapsed",
         )
-    with city_cols[1]:
-        new_city = st.text_input("Add city", placeholder="Dallas…",
-                                 label_visibility="collapsed", key="ev_new_city")
-        if new_city.strip() and new_city.strip() not in all_cities:
-            if st.button("Add", key="ev_add_city"):
-                st.session_state.setdefault("ev_manual_cities", []).append(new_city.strip())
+    with btn_col:
+        if st.button("＋ Add city", key="ev_add_city", use_container_width=True):
+            city_to_add = new_city.strip()
+            if city_to_add and city_to_add not in all_cities:
+                st.session_state.setdefault("ev_manual_cities", []).append(city_to_add)
                 st.rerun()
+            elif not city_to_add:
+                st.toast("Enter a city name first.")
+            else:
+                st.toast(f"{city_to_add} is already in the list.")
 
     cities_to_scrape = selected_cities
     if not cities_to_scrape:
