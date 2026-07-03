@@ -1239,7 +1239,15 @@ elif page == "Events":
         scored = score_events(raw, resume_text=resume_text)
 
         with st.spinner("Saving to your account..."):
-            upsert_events(scored, user_id=_USER_ID)
+            try:
+                upsert_events(scored, user_id=_USER_ID)
+            except Exception as e:
+                st.error(
+                    "Could not save events — run the CREATE TABLE SQL in the ShutterMuse "
+                    "Supabase SQL Editor first (supabase.com/dashboard/project/"
+                    "muuykfzvrvfktysqlqbc/sql), then try again."
+                )
+                st.stop()
 
         st.success(f"✓ {len(scored)} events loaded. Showing {ev_min_score}+ relevance below.")
         st.rerun()
