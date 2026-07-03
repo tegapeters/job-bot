@@ -511,3 +511,75 @@ def process_jobs(
         print("\n✍️  Cover letters skipped.")
 
     return scored, qualified
+
+
+# ── Event relevance scoring ────────────────────────────────────────
+
+def score_event(event: dict, resume_text: str = None) -> dict:
+    """
+    Score a networking event 1–10 for resume relevance using skill overlap.
+    No LLM call — fast heuristic so the whole event list scores instantly.
+    """
+    if not resume_text:
+        event["relevance_score"] = 5
+        event["relevance_reason"] = "No resume loaded — default score"
+        return event
+
+    resume_skills = _extract_skills(resume_text)
+    text = f"{event.get('title','')} {event.get('description','')} {event.get('organizer','')}".lower()
+    event_skills = _extract_skills(text)
+
+    overlap = resume_skills & event_skills
+    score = 4
+    reasons: list[str] = []
+
+    # Domain keyword signals (title-weighted)
+    title = event.get("title", "").lower()
+    domain_hits = {
+        "ai": ["ai", "artificial intelligence", "llm", "genai", "generative", "gpt", "claude", "openai"],
+        "data": ["data engineering", "data engineer", "etl", "pipeline", "spark", "databricks", "dbt"],
+        "ml": ["machine learning", "deep learning", "neural", "model", "tensorflow", "pytorch"],
+        "cloud": ["aws", "gcp", "azure", "cloud", "oci"],
+        "analytics": ["analytics", "business intelligence", "bi", "tableau", "power bi", "sql"],
+        "networking": ["networking", "career", "hiring", "job fair", "recruiter", "panel", "workshop"],
+    }
+    matched_domains: list[str] = []
+    for domain, keywords in domain_hits.items():
+        if any(kw in title for kw in keywords):
+            matched_domains.append(domain)
+            score += 2
+        elif any(kw in text for kw in keywords):
+            matched_domains.append(domain)
+            score += 1
+
+    if matched_domains:
+        reasons.append(f"relevant topics: {', '.join(matched_domains[:3])}")
+
+    # Skill overlap bonus
+    if len(overlap) >= 3:
+        score += 2
+        reasons.append(f"strong skill overlap ({len(overlap)} skills)")
+    elif len(overlap) >= 1:
+        score += 1
+        reasons.append(f"skill overlap ({len(overlap)} skills)")
+
+    # Professional / seniority signals
+    if any(w in text for w in ["professional", "senior", "executive", "leader", "director", "mentor"]):
+        score += 1
+        reasons.append("professional-level event")
+
+    # Penalise student/beginner events
+    if any(w in text for w in ["student", "beginner", "intro to", "101", "bootcamp"]):
+        score -= 2
+        reasons.append("beginner/student focus")
+
+    event["relevance_score"] = max(1, min(10, score))
+    event["relevance_reason"] = ", ".join(reasons) if reasons else "general professional event"
+    return event
+
+
+def score_events(events: list[dict], resume_text: str = None) -> list[dict]:
+    """Score a list of events and return sorted by relevance."""
+    scored = [score_event(e, resume_text=resume_text) for e in events]
+    scored.sort(key=lambda e: e.get("relevance_score") or 0, reverse=True)
+    return scored

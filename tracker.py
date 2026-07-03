@@ -412,6 +412,58 @@ def clear_all_data(user_id: str | None = None):
         sb.table("pipeline_runs").delete().is_("user_id", "null").execute()
 
 
+# ── Networking events ─────────────────────────────────────────────
+
+def upsert_events(events: list[dict], user_id: str | None = None):
+    """Insert/update networking events."""
+    sb = get_client()
+    rows = []
+    for e in events:
+        row = {
+            "id": e["id"],
+            "source": e.get("source", ""),
+            "title": e.get("title", ""),
+            "description": (e.get("description") or "")[:3000],
+            "start_date": e.get("start_date", ""),
+            "location": e.get("location", ""),
+            "url": e.get("url", ""),
+            "organizer": e.get("organizer", ""),
+            "relevance_score": e.get("relevance_score"),
+            "relevance_reason": e.get("relevance_reason", ""),
+            "status": e.get("status", "new"),
+        }
+        if user_id:
+            row["user_id"] = user_id
+        rows.append(row)
+    if rows:
+        sb.table("networking_events").upsert(rows, on_conflict="id").execute()
+
+
+def get_events(
+    user_id: str | None = None,
+    min_score: int = 0,
+    status_filter: list[str] | None = None,
+) -> list[dict]:
+    """Fetch networking events, optionally filtered."""
+    sb = get_client()
+    q = sb.table("networking_events").select("*").order("start_date", desc=False)
+    if user_id:
+        q = q.eq("user_id", user_id)
+    if min_score:
+        q = q.gte("relevance_score", min_score)
+    if status_filter:
+        q = q.in_("status", status_filter)
+    return q.execute().data or []
+
+
+def update_event_status(event_id: str, status: str, user_id: str | None = None):
+    sb = get_client()
+    q = sb.table("networking_events").update({"status": status}).eq("id", event_id)
+    if user_id:
+        q = q.eq("user_id", user_id)
+    q.execute()
+
+
 def get_all_applications(user_id: str | None = None) -> list[dict]:
     sb = get_client()
     q = sb.table("job_applications").select("*").order("score", desc=True)

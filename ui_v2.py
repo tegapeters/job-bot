@@ -17,7 +17,7 @@ from tracker import (
     update_status, get_seen_ids, log_event, get_event_counts,
     log_experiment_run, get_recent_runs,
     rank_queue_with_personalization, get_source_health,
-    clear_queue,
+    clear_queue, upsert_events, get_events, update_event_status,
     _scope_id,
 )
 from sessions import save_session, load_session, clear_session, new_uid
@@ -439,7 +439,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigate",
-        ["Setup", "Run Pipeline", "Review Queue", "Applied", "Interviews", "Dashboard", "All Applications"],
+        ["Setup", "Run Pipeline", "Review Queue", "Applied", "Interviews", "Events", "Dashboard", "All Applications"],
         label_visibility="collapsed",
     )
 
@@ -1200,6 +1200,146 @@ elif page == "All Applications":
 # ═══════════════════════════════════════════════════════════════════
 # RUN PIPELINE
 # ═══════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# EVENTS
+# ═══════════════════════════════════════════════════════════════════
+elif page == "Events":
+    page_header("Networking", "Events near <em>you.</em>")
+
+    from agent import score_events
+
+    # ── Controls ──────────────────────────────────────────────────
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1, 1])
+    with ctrl_col1:
+        city_input = st.text_input(
+            "City",
+            value="Houston",
+            placeholder="Houston, Austin, New York…",
+            label_visibility="collapsed",
+            help="City to search for events in",
+        )
+    with ctrl_col2:
+        ev_min_score = st.selectbox(
+            "Min relevance",
+            [1, 3, 5, 7],
+            index=1,
+            label_visibility="collapsed",
+            help="Minimum relevance score to show",
+        )
+    with ctrl_col3:
+        refresh_btn = st.button("Refresh Events", type="primary", use_container_width=True)
+
+    if refresh_btn:
+        resume_text = st.session_state.get("resume_text")
+        with st.spinner(f"Scraping events in {city_input}..."):
+            from scrapers.events import scrape_events
+            raw = scrape_events(city=city_input.strip())
+
+        st.info(f"Found {len(raw)} events — scoring against your resume...")
+        scored = score_events(raw, resume_text=resume_text)
+
+        with st.spinner("Saving to your account..."):
+            upsert_events(scored, user_id=_USER_ID)
+
+        st.success(f"✓ {len(scored)} events loaded. Showing {ev_min_score}+ relevance below.")
+        st.rerun()
+
+    # ── Load saved events ─────────────────────────────────────────
+    events = get_events(user_id=_USER_ID, min_score=ev_min_score,
+                        status_filter=["new", "interested", "attending"])
+
+    if not events:
+        st.markdown("""
+        <div class="pipeline-card" style="text-align:center;padding:40px">
+          <h4>No events loaded yet</h4>
+          <p>Enter your city above and click <b>Refresh Events</b> to scrape local networking events
+          scored against your resume.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
+
+    # ── Filters ───────────────────────────────────────────────────
+    all_sources = sorted(set(e.get("source","") for e in events))
+    f1, f2 = st.columns([2, 2])
+    with f1:
+        src_filter = st.multiselect("Source", all_sources, default=all_sources, key="ev_src")
+    with f2:
+        ev_search = st.text_input("Search", placeholder="AI, data, Python…", key="ev_search",
+                                  label_visibility="collapsed")
+
+    if src_filter:
+        events = [e for e in events if e.get("source") in src_filter]
+    if ev_search:
+        q = ev_search.lower()
+        events = [e for e in events if q in (e.get("title","") + e.get("description","") +
+                                              e.get("organizer","")).lower()]
+
+    st.markdown(f'<div class="section-label">{len(events)} events · sorted by relevance</div>',
+                unsafe_allow_html=True)
+
+    # ── Event cards ───────────────────────────────────────────────
+    STATUS_COLORS = {"new": "#4A4A45", "interested": "#f5c518", "attending": "#D4FF3A"}
+
+    for ev in events:
+        score = ev.get("relevance_score") or 0
+        icon = "🟢" if score >= 7 else "🟡" if score >= 4 else "🔴"
+        status = ev.get("status", "new")
+        status_dot = f'<span style="color:{STATUS_COLORS.get(status,"#4A4A45")};font-size:10px">● {status.upper()}</span>'
+
+        # Parse date for display
+        raw_date = ev.get("start_date", "")
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+            date_str = dt.strftime("%a %b %-d · %-I:%M %p")
+        except Exception:
+            date_str = raw_date[:16] if raw_date else "Date TBD"
+
+        with st.expander(
+            f"{icon}  {score}/10  —  {ev.get('title','')[:60]}",
+            expanded=False,
+        ):
+            top_col, btn_col = st.columns([3, 1])
+
+            with top_col:
+                st.markdown(
+                    f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;'
+                    f'color:#8B8B85;margin-bottom:8px">'
+                    f'📅 {date_str} &nbsp;·&nbsp; '
+                    f'📍 {ev.get("location","")[:40]} &nbsp;·&nbsp; '
+                    f'👥 {ev.get("organizer","")[:35]}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                if ev.get("relevance_reason"):
+                    st.caption(f"Relevance: {ev['relevance_reason']}")
+                if ev.get("description"):
+                    st.markdown(
+                        f'<div class="cover-letter" style="max-height:140px;overflow-y:auto;'
+                        f'font-size:11px">{ev["description"][:600]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                if ev.get("url"):
+                    st.markdown(f"[View event ↗]({ev['url']})")
+
+            with btn_col:
+                eid = ev["id"]
+                st.markdown(
+                    f'<div style="margin-bottom:8px">{status_dot}</div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("Interested", key=f"ev_int_{eid}", use_container_width=True):
+                    update_event_status(eid, "interested", user_id=_USER_ID)
+                    st.rerun()
+                if st.button("Attending", key=f"ev_att_{eid}", use_container_width=True,
+                             type="primary"):
+                    update_event_status(eid, "attending", user_id=_USER_ID)
+                    st.rerun()
+                if st.button("Skip", key=f"ev_skip_{eid}", use_container_width=True):
+                    update_event_status(eid, "skipped", user_id=_USER_ID)
+                    st.rerun()
+
+
 elif page == "Run Pipeline":
     page_header("Pipeline", "Scrape. Score. <em>Apply.</em>")
 
