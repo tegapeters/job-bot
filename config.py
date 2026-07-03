@@ -155,6 +155,10 @@ SUPABASE_KEY = (
     os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 )
 
+# ── ShutterMuse DB — networking events ─────────────────────────────
+EVENTS_SUPABASE_URL = os.getenv("EVENTS_SUPABASE_URL")
+EVENTS_SUPABASE_KEY = os.getenv("EVENTS_SUPABASE_KEY")
+
 # ── Anthropic ───────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 

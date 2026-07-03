@@ -7,11 +7,21 @@ import hashlib
 from collections import Counter
 
 from supabase import create_client
-from config import SUPABASE_URL, SUPABASE_KEY
+from config import SUPABASE_URL, SUPABASE_KEY, EVENTS_SUPABASE_URL, EVENTS_SUPABASE_KEY
 
 
 def get_client():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def get_events_client():
+    """Separate Supabase client pointing to ShutterMuse DB for networking_events."""
+    if not EVENTS_SUPABASE_URL or not EVENTS_SUPABASE_KEY:
+        raise RuntimeError(
+            "EVENTS_SUPABASE_URL and EVENTS_SUPABASE_KEY must be set. "
+            "Add them to .env or Streamlit Cloud secrets."
+        )
+    return create_client(EVENTS_SUPABASE_URL, EVENTS_SUPABASE_KEY)
 
 
 def _scope_id(raw_id: str, user_id: str | None) -> str:
@@ -415,8 +425,8 @@ def clear_all_data(user_id: str | None = None):
 # ── Networking events ─────────────────────────────────────────────
 
 def upsert_events(events: list[dict], user_id: str | None = None):
-    """Insert/update networking events."""
-    sb = get_client()
+    """Insert/update networking events into ShutterMuse DB."""
+    sb = get_events_client()
     rows = []
     for e in events:
         row = {
@@ -444,8 +454,8 @@ def get_events(
     min_score: int = 0,
     status_filter: list[str] | None = None,
 ) -> list[dict]:
-    """Fetch networking events, optionally filtered."""
-    sb = get_client()
+    """Fetch networking events from ShutterMuse DB."""
+    sb = get_events_client()
     q = sb.table("networking_events").select("*").order("start_date", desc=False)
     if user_id:
         q = q.eq("user_id", user_id)
@@ -457,7 +467,7 @@ def get_events(
 
 
 def update_event_status(event_id: str, status: str, user_id: str | None = None):
-    sb = get_client()
+    sb = get_events_client()
     q = sb.table("networking_events").update({"status": status}).eq("id", event_id)
     if user_id:
         q = q.eq("user_id", user_id)
