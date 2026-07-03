@@ -1245,8 +1245,16 @@ elif page == "Events":
         st.rerun()
 
     # ── Load saved events ─────────────────────────────────────────
-    events = get_events(user_id=_USER_ID, min_score=ev_min_score,
-                        status_filter=["new", "interested", "attending"])
+    try:
+        events = get_events(user_id=_USER_ID, min_score=ev_min_score,
+                            status_filter=["new", "interested", "attending"])
+    except RuntimeError:
+        st.warning(
+            "Events database not configured yet. "
+            "Add `EVENTS_SUPABASE_URL` and `EVENTS_SUPABASE_KEY` to your "
+            "Streamlit Cloud secrets (Settings → Secrets), then reboot the app."
+        )
+        st.stop()
 
     if not events:
         st.markdown("""
