@@ -5,6 +5,7 @@ Claude Agent — scores jobs and generates tailored cover letters.
 - Cheap scorer is resume-aware: extracts skills from resume text dynamically
 - Prompt caching: resume sent as cached system prompt (~70% token savings)
 """
+import json
 import re
 import time
 import anthropic
@@ -619,7 +620,71 @@ def extract_cities_from_resume(resume_text: str) -> list[str]:
 
 
 def score_events(events: list[dict], resume_text: str = None) -> list[dict]:
-    """Score a list of events and return sorted by relevance."""
+    """Score events: Claude batch call when resume available, heuristic fallback."""
+    if resume_text and events:
+        try:
+            return _score_events_claude(events, resume_text)
+        except Exception as e:
+            print(f"  Claude event scoring failed, falling back to heuristic: {e}")
+
     scored = [score_event(e, resume_text=resume_text) for e in events]
     scored.sort(key=lambda e: e.get("relevance_score") or 0, reverse=True)
     return scored
+
+
+_CLAUDE_BATCH_SIZE = 20
+
+
+def _score_events_claude(events: list[dict], resume_text: str) -> list[dict]:
+    """Score events in batches via Claude Haiku for accuracy."""
+    import anthropic
+    from config import ANTHROPIC_API_KEY
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    resume_excerpt = resume_text[:1500]
+
+    for batch_start in range(0, len(events), _CLAUDE_BATCH_SIZE):
+        batch = events[batch_start: batch_start + _CLAUDE_BATCH_SIZE]
+
+        event_list = "\n".join(
+            f"{i+1}. TITLE: {e.get('title','')}\n"
+            f"   DESC: {(e.get('description','') or '')[:200]}"
+            for i, e in enumerate(batch)
+        )
+
+        prompt = f"""Score these networking/professional events 1–10 for career value to this candidate.
+
+RESUME:
+{resume_excerpt}
+
+EVENTS:
+{event_list}
+
+Scoring:
+9–10: Directly relevant tech/data/AI event with strong networking or learning value
+7–8: Professional networking, relevant industry, good career value
+5–6: Tangentially relevant (business, MBA, adjacent field)
+3–4: Social or general event, low career value
+1–2: Concert, sports, entertainment
+
+Return ONLY a JSON array in the same order, no explanation:
+[{{"score": 8, "reason": "one short phrase"}}, ...]"""
+
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        raw = resp.content[0].text.strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        scores = json.loads(raw)
+
+        for i, e in enumerate(batch):
+            if i < len(scores):
+                e["relevance_score"] = max(1, min(10, int(scores[i].get("score", 5))))
+                e["relevance_reason"] = scores[i].get("reason", "")
+
+    events.sort(key=lambda e: e.get("relevance_score") or 0, reverse=True)
+    return events

@@ -1,8 +1,9 @@
 """
 Networking event scrapers.
 Sources:
-  - Meetup  (RSS per group — no auth, reliable)
-  - Luma    (city page JSON — no auth)
+  - Meetup     (RSS per group — no auth, reliable)
+  - Luma       (city page JSON — no auth)
+  - Eventbrite (ld+json structured data — no auth)
 """
 import hashlib
 import json
@@ -13,18 +14,30 @@ from datetime import datetime, timezone
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
-# Known active Meetup groups per city
+# Known active Meetup groups per city (verified to have upcoming events)
 CITY_MEETUP_GROUPS: dict[str, list[tuple[str, str]]] = {
     "houston": [
-        ("houston-data-science",     "Houston Data Science"),
-        ("houston-machine-learning", "Houston Machine Learning"),
-        ("Houston-Big-Data-Meetup",  "Houston Big Data"),
+        ("houston-data-science",       "Houston Data Science"),
+        ("houston-machine-learning",   "Houston Machine Learning"),
+        ("Houston-Big-Data-Meetup",    "Houston Big Data"),
+        ("ai-professionals-houston",   "AI Professionals Houston"),
     ],
     "austin": [
-        ("Austin-Data-Science",      "Austin Data Science"),
+        ("Austin-Data-Science",        "Austin Data Science"),
     ],
-    # Add more cities here as groups are confirmed
 }
+
+# Eventbrite categories to scrape per city slug
+EVENTBRITE_CATEGORIES = [
+    "professional-networking",
+    "technology",
+    "business",
+]
+
+# Words in Meetup event titles that signal virtual/global cross-posts
+_VIRTUAL_SIGNALS = frozenset([
+    "virtual", "global", "worldwide", "online", "webinar", "zoom", "around the world",
+])
 
 DEFAULT_MEETUP_GROUPS = CITY_MEETUP_GROUPS["houston"]
 
@@ -48,7 +61,6 @@ def _parse_date(raw: str) -> str:
     if not raw:
         return ""
     try:
-        # feedparser gives RFC 2822 e.g. "Thu, 03 Jul 2026 18:00:00 +0000"
         import email.utils
         t = email.utils.parsedate_to_datetime(raw)
         return t.isoformat()
@@ -84,14 +96,12 @@ def scrape_meetup_groups(
                     continue
 
                 # Skip virtual/global events cross-posted into local groups
-                title_lower = title.lower()
-                if any(w in title_lower for w in ["virtual", "global", "worldwide", "online", "webinar", "zoom", "around the world"]):
+                if any(w in title.lower() for w in _VIRTUAL_SIGNALS):
                     continue
 
                 raw_summary = entry.get("summary", "")
                 desc = _clean_html(raw_summary)
 
-                # Try to extract venue from description
                 venue_match = re.search(
                     r'(?:Location|Venue|Where)[:\s]+([^\n<]{5,80})', desc, re.IGNORECASE
                 )
@@ -119,7 +129,7 @@ def scrape_meetup_groups(
 # ── Luma ─────────────────────────────────────────────────────────
 
 def scrape_luma_city(city_slug: str = "houston") -> list[dict]:
-    """Scrape featured events from a Luma city page."""
+    """Scrape featured events from a Luma city page, enriching with full descriptions."""
     events: list[dict] = []
     seen: set[str] = set()
 
@@ -165,11 +175,16 @@ def scrape_luma_city(city_slug: str = "houston") -> list[dict]:
             cal = entry.get("calendar") or {}
             organizer = cal.get("name", "") if isinstance(cal, dict) else ""
 
+            # Prefer description from the city page; enrich from event page if empty
+            desc = _clean_html(ev.get("description", ""))
+            if not desc or len(desc) < 80:
+                desc = _fetch_luma_description(event_url) or desc
+
             events.append({
                 "id": _make_id(event_url),
                 "source": "luma",
                 "title": title,
-                "description": _clean_html(ev.get("description", ""))[:2000],
+                "description": desc[:2000],
                 "start_date": start_at,
                 "location": location,
                 "url": event_url,
@@ -184,6 +199,87 @@ def scrape_luma_city(city_slug: str = "houston") -> list[dict]:
     return events
 
 
+def _fetch_luma_description(event_url: str) -> str:
+    """Fetch the full description from an individual Luma event page."""
+    try:
+        r = requests.get(event_url, headers=HEADERS, timeout=10)
+        nd = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.DOTALL)
+        if not nd:
+            return ""
+        data = json.loads(nd.group(1))
+        # Walk common paths for event description
+        pp = data.get("props", {}).get("pageProps", {})
+        ev = pp.get("initialData", {}).get("data", {}).get("event") or pp.get("event") or {}
+        desc = ev.get("description", "") or ev.get("desc", "")
+        return _clean_html(desc)[:2000]
+    except Exception:
+        return ""
+
+
+# ── Eventbrite ────────────────────────────────────────────────────
+
+def scrape_eventbrite_city(city_slug: str = "houston", state: str = "tx") -> list[dict]:
+    """Scrape professional/tech/business events from Eventbrite via ld+json."""
+    events: list[dict] = []
+    seen: set[str] = set()
+
+    for category in EVENTBRITE_CATEGORIES:
+        url = f"https://www.eventbrite.com/d/{state}--{city_slug}/{category}/"
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            ld_blocks = re.findall(
+                r'<script type="application/ld\+json">(.*?)</script>', r.text, re.DOTALL
+            )
+            for block in ld_blocks:
+                try:
+                    data = json.loads(block)
+                    if data.get("@type") != "ItemList":
+                        continue
+                    for item in data.get("itemListElement", []):
+                        ev = item.get("item", item)
+                        event_url = ev.get("url", "").strip()
+                        if not event_url or event_url in seen:
+                            continue
+                        seen.add(event_url)
+
+                        title = (ev.get("name") or "").strip()
+                        if not title:
+                            continue
+
+                        # Skip online-only events
+                        mode = ev.get("eventAttendanceMode", "")
+                        if "Online" in mode:
+                            continue
+
+                        loc_data = ev.get("location") or {}
+                        addr = loc_data.get("address") or {}
+                        location = ", ".join(filter(None, [
+                            loc_data.get("name", ""),
+                            addr.get("addressLocality", ""),
+                            addr.get("addressRegion", ""),
+                        ])) or city_slug.title()
+
+                        events.append({
+                            "id": _make_id(event_url),
+                            "source": "eventbrite",
+                            "title": title,
+                            "description": _clean_html(ev.get("description", ""))[:2000],
+                            "start_date": ev.get("startDate", ""),
+                            "location": location,
+                            "url": event_url,
+                            "organizer": "",
+                            "status": "new",
+                            "relevance_score": None,
+                            "relevance_reason": "",
+                        })
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"  Eventbrite error ({category}): {e}")
+
+    return events
+
+
 # ── Main entry point ─────────────────────────────────────────────
 
 def scrape_events(
@@ -191,7 +287,6 @@ def scrape_events(
     city: str = "Houston",  # kept for backward compat
 ) -> list[dict]:
     """Scrape networking events from all sources for one or more cities."""
-    # Support both new multi-city list and old single-city string
     target_cities = cities if cities else [city]
 
     all_events: list[dict] = []
@@ -203,20 +298,27 @@ def scrape_events(
 
         if groups:
             print(f"  📅 Meetup — {c} ({len(groups)} groups)...")
-            m = scrape_meetup_groups(groups, city=c)
-            for e in m:
+            for e in scrape_meetup_groups(groups, city=c):
                 if e["id"] not in seen:
                     seen.add(e["id"])
                     all_events.append(e)
-            print(f"     → {len(m)} events")
+            print(f"     → {sum(1 for e in all_events if e['source'] == 'meetup')} meetup events total")
 
         print(f"  📅 Luma — {city_key}...")
-        lu = scrape_luma_city(city_key)
-        for e in lu:
+        luma_before = len(all_events)
+        for e in scrape_luma_city(city_key):
             if e["id"] not in seen:
                 seen.add(e["id"])
                 all_events.append(e)
-        print(f"     → {len(lu)} events")
+        print(f"     → {len(all_events) - luma_before} events")
+
+        print(f"  📅 Eventbrite — {city_key}...")
+        eb_before = len(all_events)
+        for e in scrape_eventbrite_city(city_slug=city_key):
+            if e["id"] not in seen:
+                seen.add(e["id"])
+                all_events.append(e)
+        print(f"     → {len(all_events) - eb_before} events")
 
     print(f"  Total unique events: {len(all_events)}")
     return all_events
