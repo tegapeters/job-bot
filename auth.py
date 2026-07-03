@@ -38,7 +38,8 @@ def sign_out():
         pass
     for key in ("jp_auth", "resume_text", "session_uid", "target_roles",
                 "min_salary", "_session_restored", "_user_session_restored_for",
-                "otp_sent", "otp_pending_email", "_suggested_roles"):
+                "otp_sent", "otp_pending_email", "_suggested_roles",
+                "ev_manual_cities"):
         st.session_state.pop(key, None)
 
 
@@ -57,7 +58,7 @@ def restore_user_session():
         return  # already restored for this specific user
     st.session_state["_user_session_restored_for"] = user_id
     # Clear any resume left by a previous user before loading new one
-    for key in ("resume_text", "session_uid", "target_roles", "min_salary"):
+    for key in ("resume_text", "session_uid", "target_roles", "min_salary", "ev_manual_cities"):
         st.session_state.pop(key, None)
     try:
         from sessions import load_session

@@ -39,6 +39,29 @@ _VIRTUAL_SIGNALS = frozenset([
     "virtual", "global", "worldwide", "online", "webinar", "zoom", "around the world",
 ])
 
+# City slug normalisation: bare city name → (luma_slug, eb_state, eb_slug)
+# Add entries here as new cities are supported.
+CITY_SLUG_MAP: dict[str, dict[str, str]] = {
+    "houston":       {"luma": "houston",       "eb_state": "tx", "eb_slug": "houston"},
+    "austin":        {"luma": "austin",         "eb_state": "tx", "eb_slug": "austin"},
+    "dallas":        {"luma": "dallas",         "eb_state": "tx", "eb_slug": "dallas"},
+    "san antonio":   {"luma": "san-antonio",    "eb_state": "tx", "eb_slug": "san-antonio"},
+    "new york":      {"luma": "nyc",            "eb_state": "ny", "eb_slug": "new-york-city"},
+    "los angeles":   {"luma": "los-angeles",    "eb_state": "ca", "eb_slug": "los-angeles"},
+    "chicago":       {"luma": "chicago",        "eb_state": "il", "eb_slug": "chicago"},
+    "atlanta":       {"luma": "atlanta",        "eb_state": "ga", "eb_slug": "atlanta"},
+    "marietta":      {"luma": "atlanta",        "eb_state": "ga", "eb_slug": "atlanta"},
+    "seattle":       {"luma": "seattle",        "eb_state": "wa", "eb_slug": "seattle"},
+    "san francisco": {"luma": "sf",             "eb_state": "ca", "eb_slug": "san-francisco"},
+    "miami":         {"luma": "miami",          "eb_state": "fl", "eb_slug": "miami"},
+    "boston":        {"luma": "boston",         "eb_state": "ma", "eb_slug": "boston"},
+    "denver":        {"luma": "denver",         "eb_state": "co", "eb_slug": "denver"},
+    "washington":    {"luma": "dc",             "eb_state": "dc", "eb_slug": "washington-dc"},
+}
+
+# Max per-city Luma page-fetch enrichment calls (caps sequential HTTP blocking)
+_LUMA_ENRICH_LIMIT = 5
+
 DEFAULT_MEETUP_GROUPS = CITY_MEETUP_GROUPS["houston"]
 
 
@@ -132,6 +155,7 @@ def scrape_luma_city(city_slug: str = "houston") -> list[dict]:
     """Scrape featured events from a Luma city page, enriching with full descriptions."""
     events: list[dict] = []
     seen: set[str] = set()
+    enrich_count = 0  # cap sequential HTTP enrichment calls
 
     try:
         r = requests.get(f"https://lu.ma/{city_slug}", headers=HEADERS, timeout=12)
@@ -175,10 +199,13 @@ def scrape_luma_city(city_slug: str = "houston") -> list[dict]:
             cal = entry.get("calendar") or {}
             organizer = cal.get("name", "") if isinstance(cal, dict) else ""
 
-            # Prefer description from the city page; enrich from event page if empty
+            # Prefer description from the city page; enrich from event page if short
             desc = _clean_html(ev.get("description", ""))
-            if not desc or len(desc) < 80:
-                desc = _fetch_luma_description(event_url) or desc
+            if (not desc or len(desc) < 80) and enrich_count < _LUMA_ENRICH_LIMIT:
+                fetched = _fetch_luma_description(event_url)
+                if fetched:
+                    desc = fetched
+                enrich_count += 1
 
             events.append({
                 "id": _make_id(event_url),
@@ -294,31 +321,42 @@ def scrape_events(
 
     for c in target_cities:
         city_key = c.lower().split(",")[0].strip()
-        groups = CITY_MEETUP_GROUPS.get(city_key, [])
+        slugs = CITY_SLUG_MAP.get(city_key)
 
+        groups = CITY_MEETUP_GROUPS.get(city_key, [])
         if groups:
             print(f"  📅 Meetup — {c} ({len(groups)} groups)...")
+            meetup_before = len(all_events)
             for e in scrape_meetup_groups(groups, city=c):
                 if e["id"] not in seen:
                     seen.add(e["id"])
                     all_events.append(e)
-            print(f"     → {sum(1 for e in all_events if e['source'] == 'meetup')} meetup events total")
+            print(f"     → {len(all_events) - meetup_before} events")
 
-        print(f"  📅 Luma — {city_key}...")
+        luma_slug = slugs["luma"] if slugs else city_key.replace(" ", "-")
+        print(f"  📅 Luma — {luma_slug}...")
         luma_before = len(all_events)
-        for e in scrape_luma_city(city_key):
+        for e in scrape_luma_city(luma_slug):
             if e["id"] not in seen:
                 seen.add(e["id"])
                 all_events.append(e)
         print(f"     → {len(all_events) - luma_before} events")
 
-        print(f"  📅 Eventbrite — {city_key}...")
-        eb_before = len(all_events)
-        for e in scrape_eventbrite_city(city_slug=city_key):
-            if e["id"] not in seen:
-                seen.add(e["id"])
-                all_events.append(e)
-        print(f"     → {len(all_events) - eb_before} events")
+        if slugs:
+            eb_slug = slugs["eb_slug"]
+            eb_state = slugs["eb_state"]
+        else:
+            print(f"  ⚠️  No Eventbrite config for '{city_key}' — skipping (add to CITY_SLUG_MAP)")
+            eb_slug = eb_state = None
+
+        if eb_slug:
+            print(f"  📅 Eventbrite — {eb_slug}...")
+            eb_before = len(all_events)
+            for e in scrape_eventbrite_city(city_slug=eb_slug, state=eb_state):
+                if e["id"] not in seen:
+                    seen.add(e["id"])
+                    all_events.append(e)
+            print(f"     → {len(all_events) - eb_before} events")
 
     print(f"  Total unique events: {len(all_events)}")
     return all_events

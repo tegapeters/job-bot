@@ -626,10 +626,24 @@ def score_events(events: list[dict], resume_text: str = None) -> list[dict]:
             return _score_events_claude(events, resume_text)
         except Exception as e:
             print(f"  Claude event scoring failed, falling back to heuristic: {e}")
+            # Clear any partial Claude scores/reasons so heuristic is consistent
+            for ev in events:
+                ev.pop("relevance_score", None)
+                ev.pop("relevance_reason", None)
 
     scored = [score_event(e, resume_text=resume_text) for e in events]
     scored.sort(key=lambda e: e.get("relevance_score") or 0, reverse=True)
     return scored
+
+
+def _safe_score(val, default: int = 5) -> int:
+    """Parse a Claude score value to int, clamped 1–10. Returns default on any error."""
+    if val is None:
+        return default
+    try:
+        return max(1, min(10, int(float(val))))
+    except (TypeError, ValueError):
+        return default
 
 
 _CLAUDE_BATCH_SIZE = 20
@@ -672,7 +686,7 @@ Return ONLY a JSON array in the same order, no explanation:
 
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=800,
+            max_tokens=1200,
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -683,8 +697,8 @@ Return ONLY a JSON array in the same order, no explanation:
 
         for i, e in enumerate(batch):
             if i < len(scores):
-                e["relevance_score"] = max(1, min(10, int(scores[i].get("score", 5))))
-                e["relevance_reason"] = scores[i].get("reason", "")
+                e["relevance_score"] = _safe_score(scores[i].get("score"))
+                e["relevance_reason"] = scores[i].get("reason") or ""
 
     events.sort(key=lambda e: e.get("relevance_score") or 0, reverse=True)
     return events

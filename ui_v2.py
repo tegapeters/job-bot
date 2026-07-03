@@ -1238,6 +1238,7 @@ elif page == "Events":
         default=all_cities,
         label_visibility="collapsed",
         help="Uncheck a city to exclude it. Use the field below to add more.",
+        key="ev_city_select",
     )
 
     add_col, btn_col = st.columns([4, 1])
