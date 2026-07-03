@@ -578,6 +578,41 @@ def score_event(event: dict, resume_text: str = None) -> dict:
     return event
 
 
+_NON_CITY_WORDS = {
+    "confluence", "jira", "agile", "scrum", "python", "oracle", "remote",
+    "united", "states", "american", "national", "federal", "university",
+    "college", "institute", "center", "systems", "solutions", "services",
+    "technologies", "analytics", "intelligence", "management", "operations",
+}
+
+
+def extract_cities_from_resume(resume_text: str) -> list[str]:
+    """Pull unique cities mentioned in resume text (e.g. 'Houston, TX')."""
+    if not resume_text:
+        return ["Houston"]
+
+    STATE_ABBREVS = (
+        "AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|"
+        "MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|"
+        "SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC"
+    )
+    pattern = rf'\b([A-Z][a-zA-Z ]+?),\s*(?:{STATE_ABBREVS})\b'
+    matches = re.findall(pattern, resume_text)
+
+    seen: set[str] = set()
+    cities: list[str] = []
+    for city in matches:
+        city = city.strip()
+        if (2 < len(city) < 25
+                and city.lower() not in seen
+                and city.lower() not in _NON_CITY_WORDS
+                and not any(w in city.lower() for w in _NON_CITY_WORDS)):
+            seen.add(city.lower())
+            cities.append(city)
+
+    return cities if cities else ["Houston"]
+
+
 def score_events(events: list[dict], resume_text: str = None) -> list[dict]:
     """Score a list of events and return sorted by relevance."""
     scored = [score_event(e, resume_text=resume_text) for e in events]

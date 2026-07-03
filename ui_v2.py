@@ -1206,19 +1206,17 @@ elif page == "All Applications":
 elif page == "Events":
     page_header("Networking", "Events near <em>you.</em>")
 
-    from agent import score_events
+    from agent import score_events, extract_cities_from_resume
+
+    # ── Auto-detect cities from resume ────────────────────────────
+    resume_text = st.session_state.get("resume_text")
+    if "ev_cities" not in st.session_state:
+        detected = extract_cities_from_resume(resume_text) if resume_text else ["Houston"]
+        st.session_state["ev_cities"] = detected
 
     # ── Controls ──────────────────────────────────────────────────
-    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1, 1])
+    ctrl_col1, ctrl_col2 = st.columns([3, 1])
     with ctrl_col1:
-        city_input = st.text_input(
-            "City",
-            value="Houston",
-            placeholder="Houston, Austin, New York…",
-            label_visibility="collapsed",
-            help="City to search for events in",
-        )
-    with ctrl_col2:
         ev_min_score = st.selectbox(
             "Min relevance",
             [1, 3, 5, 7],
@@ -1226,17 +1224,36 @@ elif page == "Events":
             label_visibility="collapsed",
             help="Minimum relevance score to show",
         )
-    with ctrl_col3:
+    with ctrl_col2:
         refresh_btn = st.button("Refresh Events", type="primary", use_container_width=True)
 
-    if refresh_btn:
-        resume_text = st.session_state.get("resume_text")
-        delete_past_events(user_id=_USER_ID)
-        with st.spinner(f"Scraping events in {city_input}..."):
-            from scrapers.events import scrape_events
-            raw = scrape_events(city=city_input.strip())
+    # City tags — auto-detected + editable
+    st.markdown('<div class="section-label">Cities</div>', unsafe_allow_html=True)
+    city_cols = st.columns([3, 1])
+    with city_cols[0]:
+        selected_cities = st.multiselect(
+            "Cities to search",
+            options=st.session_state["ev_cities"],
+            default=st.session_state["ev_cities"],
+            label_visibility="collapsed",
+        )
+    with city_cols[1]:
+        new_city = st.text_input("Add city", placeholder="Dallas…",
+                                 label_visibility="collapsed", key="ev_new_city")
+        if new_city.strip() and new_city.strip() not in st.session_state["ev_cities"]:
+            if st.button("Add", key="ev_add_city"):
+                st.session_state["ev_cities"].append(new_city.strip())
+                st.rerun()
 
-        st.info(f"Found {len(raw)} events — scoring against your resume...")
+    cities_to_scrape = selected_cities or st.session_state["ev_cities"]
+
+    if refresh_btn:
+        delete_past_events(user_id=_USER_ID)
+        with st.spinner(f"Scraping events in {', '.join(cities_to_scrape)}..."):
+            from scrapers.events import scrape_events
+            raw = scrape_events(cities=cities_to_scrape)
+
+        st.info(f"Found {len(raw)} events across {len(cities_to_scrape)} cities — scoring against your resume...")
         scored = score_events(raw, resume_text=resume_text)
 
         with st.spinner("Saving to your account..."):

@@ -13,12 +13,20 @@ from datetime import datetime, timezone
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
-# Curated Houston tech/data/AI Meetup groups
-DEFAULT_MEETUP_GROUPS = [
-    ("houston-data-science",     "Houston Data Science"),
-    ("houston-machine-learning", "Houston Machine Learning"),
-    ("Houston-Big-Data-Meetup",  "Houston Big Data"),
-]
+# Known active Meetup groups per city
+CITY_MEETUP_GROUPS: dict[str, list[tuple[str, str]]] = {
+    "houston": [
+        ("houston-data-science",     "Houston Data Science"),
+        ("houston-machine-learning", "Houston Machine Learning"),
+        ("Houston-Big-Data-Meetup",  "Houston Big Data"),
+    ],
+    "austin": [
+        ("Austin-Data-Science",      "Austin Data Science"),
+    ],
+    # Add more cities here as groups are confirmed
+}
+
+DEFAULT_MEETUP_GROUPS = CITY_MEETUP_GROUPS["houston"]
 
 
 def _make_id(text: str) -> str:
@@ -174,32 +182,36 @@ def scrape_luma_city(city_slug: str = "houston") -> list[dict]:
 # ── Main entry point ─────────────────────────────────────────────
 
 def scrape_events(
-    city: str = "Houston",
-    extra_meetup_groups: list[tuple[str, str]] | None = None,
+    cities: list[str] | None = None,
+    city: str = "Houston",  # kept for backward compat
 ) -> list[dict]:
-    """Scrape networking events from all sources for a given city."""
-    groups = DEFAULT_MEETUP_GROUPS + (extra_meetup_groups or [])
+    """Scrape networking events from all sources for one or more cities."""
+    # Support both new multi-city list and old single-city string
+    target_cities = cities if cities else [city]
 
     all_events: list[dict] = []
-
-    print(f"  📅 Meetup ({len(groups)} groups)...")
-    m = scrape_meetup_groups(groups, city=f"{city}, TX")
-    all_events.extend(m)
-    print(f"     → {len(m)} events")
-
-    city_slug = city.lower().split(",")[0].strip()
-    print(f"  📅 Luma ({city_slug})...")
-    lu = scrape_luma_city(city_slug)
-    all_events.extend(lu)
-    print(f"     → {len(lu)} events")
-
-    # Dedup by id
     seen: set[str] = set()
-    unique = []
-    for e in all_events:
-        if e["id"] not in seen:
-            seen.add(e["id"])
-            unique.append(e)
 
-    print(f"  Total unique events: {len(unique)}")
-    return unique
+    for c in target_cities:
+        city_key = c.lower().split(",")[0].strip()
+        groups = CITY_MEETUP_GROUPS.get(city_key, [])
+
+        if groups:
+            print(f"  📅 Meetup — {c} ({len(groups)} groups)...")
+            m = scrape_meetup_groups(groups, city=c)
+            for e in m:
+                if e["id"] not in seen:
+                    seen.add(e["id"])
+                    all_events.append(e)
+            print(f"     → {len(m)} events")
+
+        print(f"  📅 Luma — {city_key}...")
+        lu = scrape_luma_city(city_key)
+        for e in lu:
+            if e["id"] not in seen:
+                seen.add(e["id"])
+                all_events.append(e)
+        print(f"     → {len(lu)} events")
+
+    print(f"  Total unique events: {len(all_events)}")
+    return all_events
