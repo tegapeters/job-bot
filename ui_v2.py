@@ -948,9 +948,20 @@ elif page == "Dashboard":
 # ═══════════════════════════════════════════════════════════════════
 elif page == "Review Queue":
     page_header("Review Queue", "Jobs worth <em>applying to.</em>")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">AI fit score 7+ · Status updates save instantly</div>', unsafe_allow_html=True)
+    rq_col_info, rq_col_thresh = st.columns([3, 1])
+    with rq_col_info:
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Status updates save instantly</div>', unsafe_allow_html=True)
+    with rq_col_thresh:
+        queue_min_score = st.selectbox(
+            "Min score",
+            [5, 6, 7, 8, 9],
+            index=1,  # default 6
+            key="rq_min_score",
+            help="Lower to see borderline matches. Raise to see only strong fits.",
+            label_visibility="collapsed",
+        )
 
-    queue = safe_get_queue(min_score=7)
+    queue = safe_get_queue(min_score=queue_min_score)
     if not queue:
         st.success("Queue is empty — nothing to review.")
         st.stop()
@@ -1055,7 +1066,7 @@ elif page == "Review Queue":
     with summary_col:
         st.markdown(f'<div class="section-label">{" · ".join(parts)}</div>', unsafe_allow_html=True)
     with purge_col:
-        stale_jobs = [j for j in safe_get_queue(min_score=7) if (_days_in_queue(j) or 0) > 14]
+        stale_jobs = [j for j in safe_get_queue(min_score=queue_min_score) if (_days_in_queue(j) or 0) > 14]
         if stale_jobs:
             if st.button(f"Dismiss {len(stale_jobs)} stale", type="secondary", help="Mark all jobs older than 14 days as Skipped"):
                 for j in stale_jobs:
