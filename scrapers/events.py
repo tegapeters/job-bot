@@ -83,6 +83,11 @@ def scrape_meetup_groups(
                 if not title:
                     continue
 
+                # Skip virtual/global events cross-posted into local groups
+                title_lower = title.lower()
+                if any(w in title_lower for w in ["virtual", "global", "worldwide", "online", "webinar", "zoom", "around the world"]):
+                    continue
+
                 raw_summary = entry.get("summary", "")
                 desc = _clean_html(raw_summary)
 

@@ -542,6 +542,8 @@ def score_event(event: dict, resume_text: str = None) -> dict:
         "cloud":      ["aws", "gcp", "azure", "cloud", "oci"],
         "analytics":  ["analytics", "business intelligence", "bi", "tableau", "power bi", "sql"],
         "networking": ["networking", "career", "hiring", "job fair", "recruiter", "panel", "workshop"],
+        "business":   ["mba", "business school", "graduate program", "alumni", "rotary", "chamber of commerce", "entrepreneurship", "startup"],
+        "university": ["university", "college", "graduate", "research", "faculty", "academic", "stem"],
     }
     matched_domains: list[str] = []
     domain_score = 0

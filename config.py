@@ -145,22 +145,33 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-# Support both Next.js-style and plain secret names for Streamlit Cloud
-SUPABASE_URL = (
-    os.getenv("SUPABASE_URL") or
-    os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-)
-SUPABASE_KEY = (
-    os.getenv("SUPABASE_ANON_KEY") or
-    os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-)
+
+def _secret(*names: str) -> str | None:
+    """Read a secret from env vars (local) or st.secrets (Streamlit Cloud)."""
+    for name in names:
+        val = os.getenv(name)
+        if val:
+            return val
+    try:
+        import streamlit as st
+        for name in names:
+            val = st.secrets.get(name)
+            if val:
+                return val
+    except Exception:
+        pass
+    return None
+
+
+SUPABASE_URL = _secret("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = _secret("SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_KEY")
 
 # ── ShutterMuse DB — networking events ─────────────────────────────
-EVENTS_SUPABASE_URL = os.getenv("EVENTS_SUPABASE_URL")
-EVENTS_SUPABASE_KEY = os.getenv("EVENTS_SUPABASE_KEY")
+EVENTS_SUPABASE_URL = _secret("EVENTS_SUPABASE_URL")
+EVENTS_SUPABASE_KEY = _secret("EVENTS_SUPABASE_KEY")
 
 # ── Anthropic ───────────────────────────────────────────────────────
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_API_KEY = _secret("ANTHROPIC_API_KEY")
 
 # ── Scoring backend strategy ────────────────────────────────────────
 # claude = current behavior (best quality, highest cost)
