@@ -125,10 +125,17 @@ def scrape_meetup_groups(
                 raw_summary = entry.get("summary", "")
                 desc = _clean_html(raw_summary)
 
+                # Also skip if description signals virtual attendance
+                if any(w in desc[:500].lower() for w in _VIRTUAL_SIGNALS):
+                    continue
+
                 venue_match = re.search(
                     r'(?:Location|Venue|Where)[:\s]+([^\n<]{5,80})', desc, re.IGNORECASE
                 )
-                location = venue_match.group(1).strip() if venue_match else city
+                extracted = venue_match.group(1).strip() if venue_match else ""
+                # Sanity-check extracted location: must contain a digit or comma
+                # (real addresses do; garbage prose matches don't)
+                location = extracted if extracted and re.search(r'[\d,]', extracted) else city
 
                 events.append({
                     "id": _make_id(event_url),

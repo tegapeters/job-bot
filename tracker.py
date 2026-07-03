@@ -484,6 +484,16 @@ def delete_past_events(user_id: str | None = None):
     q.execute()
 
 
+def delete_all_events(user_id: str | None = None):
+    """Remove all saved events for a user. Called before a full refresh so
+    stale events from previously-selected cities don't bleed through."""
+    sb = get_events_client()
+    q = sb.table("networking_events").delete().neq("id", "")
+    if user_id:
+        q = q.eq("user_id", user_id)
+    q.execute()
+
+
 def update_event_status(event_id: str, status: str, user_id: str | None = None):
     sb = get_events_client()
     q = sb.table("networking_events").update({"status": status}).eq("id", event_id)

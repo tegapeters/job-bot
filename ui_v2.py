@@ -17,7 +17,7 @@ from tracker import (
     update_status, get_seen_ids, log_event, get_event_counts,
     log_experiment_run, get_recent_runs,
     rank_queue_with_personalization, get_source_health,
-    clear_queue, upsert_events, get_events, update_event_status, delete_past_events,
+    clear_queue, upsert_events, get_events, update_event_status, delete_past_events, delete_all_events,
     _scope_id,
 )
 from sessions import save_session, load_session, clear_session, new_uid
@@ -1266,7 +1266,7 @@ elif page == "Events":
         st.stop()
 
     if refresh_btn:
-        delete_past_events(user_id=_USER_ID)
+        delete_all_events(user_id=_USER_ID)
         with st.spinner(f"Scraping events in {', '.join(cities_to_scrape)}..."):
             from scrapers.events import scrape_events
             raw = scrape_events(cities=cities_to_scrape)
