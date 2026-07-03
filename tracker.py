@@ -454,9 +454,14 @@ def get_events(
     min_score: int = 0,
     status_filter: list[str] | None = None,
 ) -> list[dict]:
-    """Fetch networking events from ShutterMuse DB."""
+    """Fetch upcoming networking events from ShutterMuse DB."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()  # "2026-07-03"
     sb = get_events_client()
-    q = sb.table("networking_events").select("*").order("start_date", desc=False)
+    q = (sb.table("networking_events")
+         .select("*")
+         .gte("start_date", today)          # future events only
+         .order("start_date", desc=False))
     if user_id:
         q = q.eq("user_id", user_id)
     if min_score:
@@ -464,6 +469,17 @@ def get_events(
     if status_filter:
         q = q.in_("status", status_filter)
     return q.execute().data or []
+
+
+def delete_past_events(user_id: str | None = None):
+    """Remove events whose start_date has passed."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()
+    sb = get_events_client()
+    q = sb.table("networking_events").delete().lt("start_date", today)
+    if user_id:
+        q = q.eq("user_id", user_id)
+    q.execute()
 
 
 def update_event_status(event_id: str, status: str, user_id: str | None = None):
