@@ -866,6 +866,7 @@ if page == "Setup":
             st.session_state["resume_text"] = clean_text
             st.session_state["target_roles"] = roles
             st.session_state["min_salary"] = salary_map[selected_salary]
+            st.session_state.pop("ev_cities", None)  # re-detect cities from new resume
 
             # Persist to Supabase — use auth user_id as key so resume is tied to account
             uid = _USER_ID or st.session_state.get("session_uid") or new_uid()
@@ -1211,7 +1212,10 @@ elif page == "Events":
     # ── Auto-detect cities from resume ────────────────────────────
     resume_text = st.session_state.get("resume_text")
     if "ev_cities" not in st.session_state:
-        detected = extract_cities_from_resume(resume_text) if resume_text else ["Houston"]
+        detected = extract_cities_from_resume(resume_text) if resume_text else []
+        # Always include Houston — it's the primary scraping target
+        if "Houston" not in detected:
+            detected = ["Houston"] + detected
         st.session_state["ev_cities"] = detected
 
     # ── Controls ──────────────────────────────────────────────────
