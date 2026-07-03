@@ -1220,7 +1220,7 @@ elif page == "Events":
         ev_min_score = st.selectbox(
             "Min relevance",
             [1, 3, 5, 7],
-            index=1,
+            index=2,  # default 5 — filters concerts/social, keeps professional events
             label_visibility="collapsed",
             help="Minimum relevance score to show",
         )
@@ -1245,7 +1245,10 @@ elif page == "Events":
                 st.session_state["ev_cities"].append(new_city.strip())
                 st.rerun()
 
-    cities_to_scrape = selected_cities or st.session_state["ev_cities"]
+    cities_to_scrape = selected_cities
+    if not cities_to_scrape:
+        st.warning("Select at least one city to search.")
+        st.stop()
 
     if refresh_btn:
         delete_past_events(user_id=_USER_ID)

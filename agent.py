@@ -533,25 +533,28 @@ def score_event(event: dict, resume_text: str = None) -> dict:
     score = 4
     reasons: list[str] = []
 
-    # Domain keyword signals (title-weighted)
+    # Domain keyword signals — capped so one event can't inflate to 10 on domains alone
     title = event.get("title", "").lower()
     domain_hits = {
-        "ai": ["ai", "artificial intelligence", "llm", "genai", "generative", "gpt", "claude", "openai"],
-        "data": ["data engineering", "data engineer", "etl", "pipeline", "spark", "databricks", "dbt"],
-        "ml": ["machine learning", "deep learning", "neural", "model", "tensorflow", "pytorch"],
-        "cloud": ["aws", "gcp", "azure", "cloud", "oci"],
-        "analytics": ["analytics", "business intelligence", "bi", "tableau", "power bi", "sql"],
+        "ai":         ["ai", "artificial intelligence", "llm", "genai", "generative", "gpt", "claude", "openai"],
+        "data":       ["data engineering", "data engineer", "etl", "pipeline", "spark", "databricks", "dbt"],
+        "ml":         ["machine learning", "deep learning", "neural", "model", "tensorflow", "pytorch"],
+        "cloud":      ["aws", "gcp", "azure", "cloud", "oci"],
+        "analytics":  ["analytics", "business intelligence", "bi", "tableau", "power bi", "sql"],
         "networking": ["networking", "career", "hiring", "job fair", "recruiter", "panel", "workshop"],
     }
     matched_domains: list[str] = []
+    domain_score = 0
     for domain, keywords in domain_hits.items():
         if any(kw in title for kw in keywords):
             matched_domains.append(domain)
-            score += 2
+            domain_score += 2
         elif any(kw in text for kw in keywords):
             matched_domains.append(domain)
-            score += 1
+            domain_score += 1
 
+    domain_score = min(domain_score, 4)  # cap: no single event maxes out on domains alone
+    score += domain_score
     if matched_domains:
         reasons.append(f"relevant topics: {', '.join(matched_domains[:3])}")
 

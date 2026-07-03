@@ -456,11 +456,13 @@ def get_events(
 ) -> list[dict]:
     """Fetch upcoming networking events from ShutterMuse DB."""
     from datetime import datetime, timezone
-    today = datetime.now(timezone.utc).date().isoformat()  # "2026-07-03"
+    # Use yesterday's date as the cutoff so events happening today still show
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
     sb = get_events_client()
     q = (sb.table("networking_events")
          .select("*")
-         .gte("start_date", today)          # future events only
+         .gte("start_date", cutoff)
          .order("start_date", desc=False))
     if user_id:
         q = q.eq("user_id", user_id)
