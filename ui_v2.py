@@ -493,20 +493,30 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
     """Render a full job card with details, cover letter, and status controls."""
     score = job.get("score") or 0
     icon = "🟢" if score >= 8 else "🟡" if score >= 6 else "🔴"
-    eff = job.get("_effective_score")
-    title_suffix = f"  (rank {eff})" if eff is not None and eff != score else ""
     days = _days_in_queue(job)
     days_label = f"  ·  {days}d" if days is not None else ""
     with st.expander(
-        f"{icon}  {score}/10{title_suffix}  —  {job['title']} @ {job.get('company', '?')}{days_label}",
+        f"{icon}  {score}/10  —  {job['title']} @ {job.get('company', '?')}{days_label}",
         expanded=expanded,
     ):
         hint = job.get("_personal_hint")
-        bonus = job.get("_personal_bonus")
-        if hint or (bonus and bonus != 0):
-            st.caption(
-                f"Personalized Δ {bonus:+.2f} — {hint}" if hint else f"Personalized Δ {bonus:+.2f}"
+        bonus = job.get("_personal_bonus") or 0
+        if hint:
+            # Translate internal reasons into plain English
+            friendly = (hint
+                .replace("company you engaged positively before", "✅ Company you liked before")
+                .replace("company you skipped/rejected before", "⚠️ Company you passed on before")
+                .replace("source with past positive outcomes", "📌 Strong source for you")
+                .replace("title overlap with roles you liked", "👍 Matches roles you've gone for")
             )
+            # Replace "title contains patterns you skip (x, y)" with friendlier form
+            import re as _re
+            friendly = _re.sub(
+                r"title contains patterns you skip \(([^)]+)\)",
+                lambda m: f"⏭️ You tend to skip {m.group(1)} roles",
+                friendly
+            )
+            st.caption(friendly)
 
         if days is not None:
             color = "#8B8B85" if days <= 7 else "#f5c518" if days <= 14 else "#ff6b6b"
@@ -992,9 +1002,9 @@ elif page == "Review Queue":
     stale_hidden = total_in_db - len(queue)
 
     personalize = st.toggle(
-        "Personalize order from my outcomes",
+        "Learn from my history",
         value=True,
-        help="Re-ranks using companies, sources, and title words from jobs where you logged positive or negative signals.",
+        help="Reorders your queue based on companies, job types, and patterns from roles you've applied to or skipped.",
     )
     weights = {
         "pos_company": 1.2,
@@ -1003,51 +1013,30 @@ elif page == "Review Queue":
         "title_token_per_hit": 0.2,
         "title_token_cap": 1.0,
         "title_min_hits": 2,
+        "neg_token_per_hit": -0.5,
+        "neg_token_cap": -1.5,
     }
 
     if personalize:
-        with st.expander("Personalization controls", expanded=False):
-            st.caption("Tune how strongly your past outcomes influence queue ordering.")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                weights["pos_company"] = st.slider("Positive company boost", 0.0, 3.0, float(weights["pos_company"]), 0.05,
-                    help="How much to boost jobs from companies where you've had interviews or positive signals. Higher = those companies rank first.")
-                weights["neg_company"] = st.slider("Negative company penalty", -3.0, 0.0, float(weights["neg_company"]), 0.05,
-                    help="How much to push down jobs from companies where you've been rejected or marked skipped. More negative = stronger suppression.")
-            with c2:
-                weights["good_source"] = st.slider("Good source boost", 0.0, 2.0, float(weights["good_source"]), 0.05,
-                    help="Boost jobs from sources (LinkedIn, Indeed, etc.) that have historically sent you to interviews or strong leads.")
-                weights["title_min_hits"] = st.slider("Title overlap min hits", 1, 5, int(weights["title_min_hits"]), 1,
-                    help="Minimum number of title keywords that must match your past successful jobs before a title-overlap bonus is applied.")
-            with c3:
-                weights["title_token_per_hit"] = st.slider("Title overlap per hit", 0.0, 0.6, float(weights["title_token_per_hit"]), 0.01,
-                    help="Score bonus added per matching title keyword (e.g. 'senior', 'engineer', 'data'). Stacks up to the cap.")
-                weights["title_token_cap"] = st.slider("Title overlap cap", 0.0, 2.0, float(weights["title_token_cap"]), 0.05,
-                    help="Maximum total bonus from title keyword matches, no matter how many words align. Prevents title-heavy jobs from dominating.")
-
-            preview_n = st.slider("Preview rows", 5, 25, 10, 1)
-            base = sorted(queue, key=lambda j: j.get("score") or 0, reverse=True)
-            reranked = [dict(j) for j in queue]
-            rank_queue_with_personalization(reranked, weights=weights, user_id=_USER_ID)
-
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown("**Before (AI score only)**")
-                if base:
-                    base_top = pd.DataFrame(base[:preview_n])[["title", "company", "score", "source"]]
-                    st.dataframe(base_top, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No jobs in queue.")
-            with col_b:
-                st.markdown("**After (personalized)**")
-                if reranked:
-                    new_top = pd.DataFrame(reranked[:preview_n])[["title", "company", "score", "_effective_score", "_personal_bonus", "source"]]
-                    st.dataframe(new_top, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No jobs in queue.")
-
-            if st.button("Reset personalization defaults"):
-                st.rerun()
+        # Show a plain-English summary of what the system has learned
+        from tracker import get_personalization_context
+        ctx = get_personalization_context(user_id=_USER_ID)
+        if ctx.get("has_signals"):
+            pills = []
+            if ctx.get("pos_companies"):
+                pills.append(f"👍 Prefers companies: {', '.join(sorted(ctx['pos_companies'])[:3])}")
+            if ctx.get("neg_companies"):
+                pills.append(f"⚠️ Avoids companies: {', '.join(sorted(ctx['neg_companies'])[:3])}")
+            if ctx.get("title_tokens"):
+                pills.append(f"✅ Likes roles with: {', '.join(sorted(ctx['title_tokens'])[:5])}")
+            if ctx.get("neg_title_tokens"):
+                pills.append(f"⏭️ Tends to skip: {', '.join(sorted(ctx['neg_title_tokens'])[:5])} roles")
+            if pills:
+                with st.expander("What Job Pal has learned about you", expanded=False):
+                    for p in pills:
+                        st.caption(p)
+        else:
+            st.caption("Apply to or skip a few jobs and Job Pal will start learning your preferences.")
 
         rank_queue_with_personalization(queue, weights=weights, user_id=_USER_ID)
     else:
