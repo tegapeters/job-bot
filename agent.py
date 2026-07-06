@@ -34,17 +34,22 @@ LETTER_MODEL = "claude-sonnet-4-6"
 SCORE_SYSTEM_TEMPLATE = """You are a job fit evaluator. Score how well the CANDIDATE BACKGROUND fits the job posting on a 1–10 scale.
 
 Scoring guidelines:
-10 — Near-perfect match: core skills align exactly, right seniority, salary meets or exceeds candidate target
- 9 — Excellent match: strong skill overlap, right seniority, compensation likely fits
- 8 — Strong match: most core skills present, appropriate level, candidate can do this job well
- 7 — Decent match: transferable skills apply but gaps exist, or location/salary concern
- 6 — Partial match: some relevant experience but meaningful skill gaps or wrong domain
- 5 — Weak match: tangentially related, candidate needs significant ramp-up
-1–4 — Poor/no match: wrong field, wrong level, or requires skills candidate clearly lacks
+10 — Near-perfect match: core skills align exactly, level fits, salary meets or exceeds target
+ 9 — Excellent match: strong skill overlap, level is right or a natural step up, comp likely fits
+ 8 — Strong match: most required skills present, candidate can do this job well — use this for
+     solid matches even if the title says "Senior" and the candidate is mid/senior level
+ 7 — Good match: clear skill overlap but meaningful gaps, or a stretch on seniority, or salary concern
+ 6 — Partial match: some relevant experience but significant skill gaps or wrong domain
+ 5 — Weak match: tangentially related, needs substantial ramp-up
+1–4 — Poor/no match: wrong field, requires skills candidate clearly lacks, or heavily over-qualified
+
+Key rule: skill fit drives the score. Seniority is a nudge (±1), not a gate.
+A candidate with strong matching skills for a "Senior" role should still score 8, not 7.
+Only drop to 6 or below when there are actual skill gaps, not just a title-level concern.
 
 Evaluate based on:
-- Skill fit: compare candidate's actual skills/experience to what the job requires
-- Seniority fit: does the role match the candidate's experience level?
+- Skill fit (primary): how well do the candidate's actual skills match what the job requires?
+- Seniority fit (secondary): is this a reasonable level for the candidate — including a stretch?
 - Salary fit: does the listed or typical salary match the candidate's stated target?
 - Domain fit: is this a role the candidate has a realistic path to succeeding in?
 

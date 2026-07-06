@@ -469,7 +469,7 @@ def safe_get_apps():
         st.error(f"Cannot connect to database. Check Supabase secrets in Streamlit Cloud settings. Error: `{e}`")
         st.stop()
 
-def safe_get_queue(min_score=8):
+def safe_get_queue(min_score=REVIEW_MIN_SCORE):
     try:
         return get_review_queue(min_score=min_score, user_id=_USER_ID)
     except Exception as e:
@@ -942,7 +942,7 @@ elif page == "Dashboard":
 
     st.markdown('<div class="section-label" style="margin-top:28px">Source health</div>', unsafe_allow_html=True)
     st.caption("Per job board: volume, average score, share scoring 7+, and how many are waiting in Review Queue.")
-    health_df = pd.DataFrame(get_source_health(apps=apps, review_min_score=8, user_id=_USER_ID))
+    health_df = pd.DataFrame(get_source_health(apps=apps, review_min_score=REVIEW_MIN_SCORE, user_id=_USER_ID))
     if not health_df.empty:
         st.dataframe(health_df, use_container_width=True, hide_index=True)
     else:
@@ -965,7 +965,7 @@ elif page == "Review Queue":
         queue_min_score = st.selectbox(
             "Min score",
             [5, 6, 7, 8, 9],
-            index=1,  # default 6
+            index=2,  # default 7
             key="rq_min_score",
             help="Lower to see borderline matches. Raise to see only strong fits.",
             label_visibility="collapsed",

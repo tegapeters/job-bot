@@ -184,5 +184,5 @@ ENABLE_COVER_LETTERS = os.getenv("ENABLE_COVER_LETTERS", "1").strip().lower() in
 # ── Auto-apply threshold ────────────────────────────────────────────
 # Jobs scoring >= this are queued for review; set to 11 to disable auto-apply
 AUTO_APPLY_MIN_SCORE = 11   # 11 = review-first mode (recommended)
-REVIEW_MIN_SCORE = 8        # Surface jobs scoring 8+ in review queue
+REVIEW_MIN_SCORE = 7        # Surface jobs scoring 7+ in review queue
 COVER_LETTER_MIN_SCORE = 8  # Only generate cover letters for 8+ (strong leads)
