@@ -148,12 +148,20 @@ _SALARY_PATTERNS = [
     (r'\$\s?([\d,]+)\s*to\s*\$\s?([\d,]+)', 2),
     # Base salary range: $X - $Y
     (r'[Bb]ase\s+[Ss]alary\s*(?:range)?:?\s*\$\s*([\d,]+)\s*[—–\-]+\s*\$?\s*([\d,]+)', 2),
+    # Compensation: $X,000 - $Y,000
+    (r'[Cc]ompensation\s*:?\s*\$\s*([\d,]+)\s*[—–\-]+\s*\$?\s*([\d,]+)', 2),
+    # salary range of $X to $Y
+    (r'[Ss]alary\s+(?:range\s+)?of\s+\$\s?([\d,]+)\s*(?:to|-)\s*\$?\s?([\d,]+)', 2),
     # Up to $180,000
     (r'[Uu]p\s+to\s+\$\s?([\d,]+)', 1),
     # $150,000/year  or  $150,000 per year
     (r'\$\s?([\d,]+)\s*(?:/yr|/year|per year|annually)', 1),
     # Starting at $120,000
     (r'[Ss]tarting\s+at\s+\$\s?([\d,]+)', 1),
+    # Hourly: $50/hr - $75/hr  or  $50 - $75/hour
+    (r'\$\s?([\d]+(?:\.\d+)?)\s*[—–\-]+\s*\$?\s?([\d]+(?:\.\d+)?)\s*/\s*h(?:ou)?r', 2),
+    # $50/hr or $50 per hour (single)
+    (r'\$\s?([\d]+(?:\.\d+)?)\s*(?:/hr|/hour|per hour)', 1),
 ]
 
 

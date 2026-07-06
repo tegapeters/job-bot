@@ -496,7 +496,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
     days = _days_in_queue(job)
     days_label = f"  ·  {days}d" if days is not None else ""
     with st.expander(
-        f"{icon}  {score}/10  —  {job['title']} @ {job.get('company', '?')}{days_label}",
+        f"{icon}  {score}/10  —  {job['title'].replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')} @ {job.get('company', '?')}{days_label}",
         expanded=expanded,
     ):
         hint = job.get("_personal_hint")
@@ -531,7 +531,15 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
         with col1:
             st.markdown(f"**Location:** {job.get('location', 'Unknown')}")
             st.markdown(f"**Score reason:** {job.get('score_reason', '')}")
-            st.markdown(f"**Salary match:** {job.get('salary_match', 'Unknown')}")
+            # Show extracted salary range if available, otherwise show match status
+            from agent import _extract_salary_from_text
+            salary_range = _extract_salary_from_text(job.get("description", ""))
+            salary_match = job.get("salary_match", "Unknown")
+            if salary_range:
+                match_label = {"Yes": "✅", "No": "❌", "Unknown": "—"}.get(salary_match, "—")
+                st.markdown(f"**Salary:** {salary_range} {match_label}")
+            else:
+                st.markdown(f"**Salary:** Not listed — match: {salary_match}")
             st.markdown(f"**Seniority:** {job.get('seniority', 'Unknown')}")
             st.markdown(f"**Source:** {job.get('source', '')}")
             if job.get("url"):
