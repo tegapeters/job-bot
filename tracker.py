@@ -213,7 +213,8 @@ def get_personalization_context(event_limit: int = 400, user_id: str | None = No
     pos_companies: set[str] = set()
     neg_companies: set[str] = set()
     pos_sources: Counter[str] = Counter()
-    title_tokens: Counter[str] = Counter()
+    pos_title_tokens: Counter[str] = Counter()
+    neg_title_tokens: Counter[str] = Counter()
 
     for e in events:
         jid = e.get("job_id")
@@ -226,29 +227,39 @@ def get_personalization_context(event_limit: int = 400, user_id: str | None = No
         et = e.get("event_type") or ""
         detail = e.get("detail") or ""
 
+        words = [w.strip(".,()[]/-") for w in title.replace("/", " ").split() if len(w.strip(".,()[]/-")) > 3]
+
         if _event_is_positive(et, detail):
             if company:
                 pos_companies.add(company)
             if src:
                 pos_sources[src] += 1
-            for w in title.replace("/", " ").split():
-                w = w.strip(".,()[]")
-                if len(w) > 3:
-                    title_tokens[w] += 1
+            for w in words:
+                pos_title_tokens[w] += 1
         elif _event_is_negative(et, detail):
             if company:
                 neg_companies.add(company)
+            for w in words:
+                neg_title_tokens[w] += 1
 
-    top_tokens = {t for t, _ in title_tokens.most_common(25)}
+    top_pos_tokens = {t for t, _ in pos_title_tokens.most_common(25)}
     good_sources = {s for s, c in pos_sources.most_common(5) if c >= 1}
 
-    has_signals = bool(pos_companies or neg_companies or top_tokens or good_sources)
+    # Only keep neg tokens that don't also appear in positive titles —
+    # avoids penalising shared words like "data" or "analyst"
+    top_neg_tokens = {
+        t for t, _ in neg_title_tokens.most_common(20)
+        if t not in pos_title_tokens
+    }
+
+    has_signals = bool(pos_companies or neg_companies or top_pos_tokens or good_sources or top_neg_tokens)
     return {
         "has_signals": has_signals,
         "pos_companies": pos_companies,
         "neg_companies": neg_companies,
         "good_sources": good_sources,
-        "title_tokens": top_tokens,
+        "title_tokens": top_pos_tokens,
+        "neg_title_tokens": top_neg_tokens,
     }
 
 
@@ -264,10 +275,13 @@ def personalization_bonus(job: dict, ctx: dict, weights: dict | None = None) -> 
     title_token_per_hit_w = float(w.get("title_token_per_hit", 0.2))
     title_token_cap_w = float(w.get("title_token_cap", 1.0))
     title_min_hits = int(w.get("title_min_hits", 2))
+    neg_token_per_hit_w = float(w.get("neg_token_per_hit", -0.5))
+    neg_token_cap_w = float(w.get("neg_token_cap", -1.5))
 
     company = (job.get("company") or "").lower().strip()
     title = (job.get("title") or "").lower()
     src = (job.get("source") or "").strip() or "unknown"
+    title_words = [tw.strip(".,()[]/-") for tw in title.replace("/", " ").split()]
 
     bonus = 0.0
     reasons: list[str] = []
@@ -283,13 +297,20 @@ def personalization_bonus(job: dict, ctx: dict, weights: dict | None = None) -> 
         bonus += good_source_w
         reasons.append("source with past positive outcomes")
 
-    tokens = ctx.get("title_tokens") or set()
-    if tokens:
-        hits = sum(1 for w in title.replace("/", " ").split() if w.strip(".,()[]") in tokens)
+    pos_tokens = ctx.get("title_tokens") or set()
+    if pos_tokens:
+        hits = sum(1 for tw in title_words if tw in pos_tokens)
         if hits >= title_min_hits:
-            tbonus = min(title_token_cap_w, title_token_per_hit_w * hits)
-            bonus += tbonus
+            bonus += min(title_token_cap_w, title_token_per_hit_w * hits)
             reasons.append("title overlap with roles you liked")
+
+    neg_tokens = ctx.get("neg_title_tokens") or set()
+    if neg_tokens:
+        neg_hits = [tw for tw in title_words if tw in neg_tokens]
+        if neg_hits:
+            penalty = max(neg_token_cap_w, neg_token_per_hit_w * len(neg_hits))
+            bonus += penalty
+            reasons.append(f"title contains patterns you skip ({', '.join(neg_hits[:3])})")
 
     hint = " · ".join(reasons) if reasons else ""
     return round(bonus, 2), hint
