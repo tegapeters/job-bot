@@ -17,13 +17,19 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleW
 # Known active Meetup groups per city (verified to have upcoming events)
 CITY_MEETUP_GROUPS: dict[str, list[tuple[str, str]]] = {
     "houston": [
-        ("houston-data-science",       "Houston Data Science"),
-        ("houston-machine-learning",   "Houston Machine Learning"),
-        ("Houston-Big-Data-Meetup",    "Houston Big Data"),
-        ("ai-professionals-houston",   "AI Professionals Houston"),
+        ("houston-data-science",                  "Houston Data Science"),
+        ("houston-machine-learning",              "Houston Machine Learning"),
+        ("Houston-Big-Data-Meetup",               "Houston Big Data"),
+        ("ai-professionals-houston",              "AI Professionals Houston"),
     ],
     "austin": [
-        ("Austin-Data-Science",        "Austin Data Science"),
+        ("Austin-Data-Science",                   "Austin Data Science"),
+    ],
+    "new york": [
+        ("nyc-machine-learning",                  "NYC Machine Learning"),
+    ],
+    "seattle": [
+        ("Seattle-Data-Science-Machine-Learning", "Seattle Data Science & ML"),
     ],
 }
 
@@ -42,21 +48,27 @@ _VIRTUAL_SIGNALS = frozenset([
 # City slug normalisation: bare city name → (luma_slug, eb_state, eb_slug)
 # Add entries here as new cities are supported.
 CITY_SLUG_MAP: dict[str, dict[str, str]] = {
-    "houston":       {"luma": "houston",       "eb_state": "tx", "eb_slug": "houston"},
-    "austin":        {"luma": "austin",         "eb_state": "tx", "eb_slug": "austin"},
-    "dallas":        {"luma": "dallas",         "eb_state": "tx", "eb_slug": "dallas"},
-    "san antonio":   {"luma": "san-antonio",    "eb_state": "tx", "eb_slug": "san-antonio"},
-    "new york":      {"luma": "nyc",            "eb_state": "ny", "eb_slug": "new-york-city"},
-    "los angeles":   {"luma": "los-angeles",    "eb_state": "ca", "eb_slug": "los-angeles"},
-    "chicago":       {"luma": "chicago",        "eb_state": "il", "eb_slug": "chicago"},
-    "atlanta":       {"luma": "atlanta",        "eb_state": "ga", "eb_slug": "atlanta"},
-    "marietta":      {"luma": "atlanta",        "eb_state": "ga", "eb_slug": "atlanta"},
-    "seattle":       {"luma": "seattle",        "eb_state": "wa", "eb_slug": "seattle"},
-    "san francisco": {"luma": "sf",             "eb_state": "ca", "eb_slug": "san-francisco"},
-    "miami":         {"luma": "miami",          "eb_state": "fl", "eb_slug": "miami"},
-    "boston":        {"luma": "boston",         "eb_state": "ma", "eb_slug": "boston"},
-    "denver":        {"luma": "denver",         "eb_state": "co", "eb_slug": "denver"},
-    "washington":    {"luma": "dc",             "eb_state": "dc", "eb_slug": "washington-dc"},
+    "houston":           {"luma": "houston",       "eb_state": "tx", "eb_slug": "houston"},
+    "austin":            {"luma": "austin",         "eb_state": "tx", "eb_slug": "austin"},
+    "dallas":            {"luma": "dallas",         "eb_state": "tx", "eb_slug": "dallas"},
+    "san antonio":       {"luma": "san-antonio",    "eb_state": "tx", "eb_slug": "san-antonio"},
+    "new york":          {"luma": "nyc",            "eb_state": "ny", "eb_slug": "new-york-city"},
+    "new york city":     {"luma": "nyc",            "eb_state": "ny", "eb_slug": "new-york-city"},
+    "nyc":               {"luma": "nyc",            "eb_state": "ny", "eb_slug": "new-york-city"},
+    "los angeles":       {"luma": "los-angeles",    "eb_state": "ca", "eb_slug": "los-angeles"},
+    "la":                {"luma": "los-angeles",    "eb_state": "ca", "eb_slug": "los-angeles"},
+    "chicago":           {"luma": "chicago",        "eb_state": "il", "eb_slug": "chicago"},
+    "atlanta":           {"luma": "atlanta",        "eb_state": "ga", "eb_slug": "atlanta"},
+    "marietta":          {"luma": "atlanta",        "eb_state": "ga", "eb_slug": "atlanta"},
+    "seattle":           {"luma": "seattle",        "eb_state": "wa", "eb_slug": "seattle"},
+    "san francisco":     {"luma": "sf",             "eb_state": "ca", "eb_slug": "san-francisco"},
+    "sf":                {"luma": "sf",             "eb_state": "ca", "eb_slug": "san-francisco"},
+    "miami":             {"luma": "miami",          "eb_state": "fl", "eb_slug": "miami"},
+    "boston":            {"luma": "boston",         "eb_state": "ma", "eb_slug": "boston"},
+    "denver":            {"luma": "denver",         "eb_state": "co", "eb_slug": "denver"},
+    "washington":        {"luma": "dc",             "eb_state": "dc", "eb_slug": "washington-dc"},
+    "washington dc":     {"luma": "dc",             "eb_state": "dc", "eb_slug": "washington-dc"},
+    "dc":                {"luma": "dc",             "eb_state": "dc", "eb_slug": "washington-dc"},
 }
 
 # Max per-city Luma page-fetch enrichment calls (caps sequential HTTP blocking)
@@ -293,6 +305,11 @@ def scrape_eventbrite_city(city_slug: str = "houston", state: str = "tx") -> lis
                             addr.get("addressRegion", ""),
                         ])) or city_slug.title()
 
+                        organizer_data = ev.get("organizer") or {}
+                        organizer = (
+                            organizer_data.get("name", "")
+                            if isinstance(organizer_data, dict) else ""
+                        )
                         events.append({
                             "id": _make_id(event_url),
                             "source": "eventbrite",
@@ -301,7 +318,7 @@ def scrape_eventbrite_city(city_slug: str = "houston", state: str = "tx") -> lis
                             "start_date": ev.get("startDate", ""),
                             "location": location,
                             "url": event_url,
-                            "organizer": "",
+                            "organizer": organizer,
                             "status": "new",
                             "relevance_score": None,
                             "relevance_reason": "",

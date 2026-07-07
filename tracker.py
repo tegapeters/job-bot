@@ -60,6 +60,7 @@ def upsert_jobs(jobs: list[dict], user_id: str | None = None):
             "score_reason": j.get("score_reason", ""),
             "seniority": j.get("seniority", ""),
             "salary_match": j.get("salary_match", "Unknown"),
+            "salary_range": j.get("salary_range") or "",
             "cover_letter": j.get("cover_letter", ""),
         }
         if user_id:
@@ -243,13 +244,42 @@ def get_personalization_context(event_limit: int = 400, user_id: str | None = No
                 neg_title_tokens[w] += 1
 
     top_pos_tokens = {t for t, _ in pos_title_tokens.most_common(25)}
+    # Strip HTML entities that slip through from job titles
+    top_pos_tokens = {t for t in top_pos_tokens if not t.startswith("&")}
     good_sources = {s for s, c in pos_sources.most_common(5) if c >= 1}
 
-    # Only keep neg tokens that don't also appear in positive titles —
-    # avoids penalising shared words like "data" or "analyst"
+    # Words that describe work arrangement, seniority, or are too generic to
+    # be meaningful negative signals — never penalise these regardless of skip rate.
+    _NEG_TOKEN_BLOCKLIST = frozenset([
+        "remote", "hybrid", "onsite", "senior", "lead", "staff", "principal",
+        "director", "junior", "associate", "contract", "part", "full", "time",
+        "temp", "freelance", "consultant",
+    ])
+
+    # Derive protected tokens from the user's configured target roles so that
+    # core role words (e.g. 'genai', 'machine', 'learning') can never be learned
+    # as negative signals just because one matching job was skipped for salary/fit.
+    try:
+        from config import TARGET_ROLES as _TARGET_ROLES
+        _protected = frozenset(
+            w.strip(".,()[]/-").lower()
+            for role in _TARGET_ROLES
+            for w in role.replace("/", " ").split()
+            if len(w.strip(".,()[]/-")) > 3
+        )
+    except Exception:
+        _protected = frozenset()
+
+    # Only keep neg tokens that:
+    #   1. Don't appear in positive titles (shared words like "data" are excluded)
+    #   2. Appear at least 3 times (avoids one-off spurious signals)
+    #   3. Aren't in the blocklist or protected target-role vocabulary
     top_neg_tokens = {
-        t for t, _ in neg_title_tokens.most_common(20)
+        t for t, count in neg_title_tokens.most_common(20)
         if t not in pos_title_tokens
+        and count >= 3
+        and t not in _NEG_TOKEN_BLOCKLIST
+        and t not in _protected
     }
 
     has_signals = bool(pos_companies or neg_companies or top_pos_tokens or good_sources or top_neg_tokens)
@@ -450,6 +480,8 @@ def upsert_events(events: list[dict], user_id: str | None = None):
     sb = get_events_client()
     rows = []
     for e in events:
+        if not e.get("id"):
+            continue
         row = {
             "id": e["id"],
             "source": e.get("source", ""),
@@ -507,12 +539,15 @@ def delete_past_events(user_id: str | None = None):
 
 def delete_all_events(user_id: str | None = None):
     """Remove all saved events for a user. Called before a full refresh so
-    stale events from previously-selected cities don't bleed through."""
+    stale events from previously-selected cities don't bleed through.
+
+    Requires user_id — refuses to delete without one to prevent wiping the
+    shared events table in CLI/multi-user mode.
+    """
+    if not user_id:
+        return
     sb = get_events_client()
-    q = sb.table("networking_events").delete().neq("id", "")
-    if user_id:
-        q = q.eq("user_id", user_id)
-    q.execute()
+    sb.table("networking_events").delete().eq("user_id", user_id).execute()
 
 
 def update_event_status(event_id: str, status: str, user_id: str | None = None):
@@ -529,3 +564,52 @@ def get_all_applications(user_id: str | None = None) -> list[dict]:
     if user_id:
         q = q.eq("user_id", user_id)
     return q.execute().data or []
+
+
+def get_source_freshness(user_id: str | None = None) -> list[dict]:
+    """Return per-source last-scraped time inferred from max(created_at).
+
+    Status buckets: fresh (<24h), ok (<72h), stale (>=72h).
+    Used to surface warnings in the Run Pipeline page.
+    """
+    from datetime import datetime, timezone
+    sb = get_client()
+    q = sb.table("job_applications").select("source, created_at")
+    if user_id:
+        q = q.eq("user_id", user_id)
+    rows = q.execute().data or []
+
+    by_source: dict[str, list[str]] = {}
+    for row in rows:
+        src = (row.get("source") or "unknown").strip() or "unknown"
+        ts = row.get("created_at") or ""
+        if ts:
+            by_source.setdefault(src, []).append(ts)
+
+    now = datetime.now(timezone.utc)
+    result = []
+    for src, timestamps in sorted(by_source.items()):
+        latest_str = max(timestamps) if timestamps else None
+        age_hours: float | None = None
+        if latest_str:
+            try:
+                latest = datetime.fromisoformat(latest_str.replace("Z", "+00:00"))
+                age_hours = (now - latest).total_seconds() / 3600
+            except Exception:
+                pass
+        if age_hours is None:
+            status = "unknown"
+        elif age_hours < 24:
+            status = "fresh"
+        elif age_hours < 72:
+            status = "ok"
+        else:
+            status = "stale"
+        result.append({
+            "source": src,
+            "count": len(timestamps),
+            "last_scraped": latest_str or "never",
+            "age_hours": age_hours,
+            "status": status,
+        })
+    return sorted(result, key=lambda x: (x["age_hours"] is None, x.get("age_hours") or 9999))

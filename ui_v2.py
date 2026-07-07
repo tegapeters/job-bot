@@ -1068,6 +1068,7 @@ elif page == "Review Queue":
             if st.button(f"Dismiss {len(stale_jobs)} stale", type="secondary", help="Mark all jobs older than 14 days as Skipped"):
                 for j in stale_jobs:
                     update_status(j["id"], "skipped", user_id=_USER_ID)
+                    log_event(j["id"], "status_change", "stale -> skipped", user_id=_USER_ID)
                 st.success(f"Dismissed {len(stale_jobs)} stale jobs.")
                 st.rerun()
 
@@ -1190,6 +1191,11 @@ elif page == "All Applications":
         new_status = st.selectbox("New status", ["new", "applied", "interview", "rejected", "skipped", "application_closed"])
         if st.button("Update Status", type="primary"):
             update_status(selected_id, new_status, user_id=_USER_ID)
+            _evt_map = {"applied": "applied", "interview": "interview_scheduled", "rejected": "rejected"}
+            if new_status in _evt_map:
+                log_event(selected_id, _evt_map[new_status], f"status moved to {new_status}", user_id=_USER_ID)
+            else:
+                log_event(selected_id, "status_change", f"-> {new_status}", user_id=_USER_ID)
             st.success(f"Updated → {new_status}")
             st.rerun()
 
@@ -1263,29 +1269,40 @@ elif page == "Events":
         st.stop()
 
     if refresh_btn:
-        delete_all_events(user_id=_USER_ID)
         with st.spinner(f"Scraping events in {', '.join(cities_to_scrape)}..."):
             from scrapers.events import scrape_events
             raw = scrape_events(cities=cities_to_scrape)
 
-        st.info(f"Found {len(raw)} events across {len(cities_to_scrape)} cities — scoring against your resume...")
-        scored = score_events(raw, resume_text=resume_text)
+        if not raw:
+            st.warning("No events found — existing events kept. Try again or add more cities.")
+        else:
+            st.info(f"Found {len(raw)} events across {len(cities_to_scrape)} cities — scoring against your resume...")
+            scored = score_events(raw, resume_text=resume_text)
 
-        with st.spinner("Saving to your account..."):
-            try:
-                upsert_events(scored, user_id=_USER_ID)
-            except Exception as e:
-                st.error(
-                    "Could not save events — run the CREATE TABLE SQL in the ShutterMuse "
-                    "Supabase SQL Editor first (supabase.com/dashboard/project/"
-                    "muuykfzvrvfktysqlqbc/sql), then try again."
-                )
-                st.stop()
+            with st.spinner("Saving to your account..."):
+                try:
+                    # Delete AFTER a successful scrape so a failed run never wipes the DB
+                    delete_all_events(user_id=_USER_ID)
+                    upsert_events(scored, user_id=_USER_ID)
+                except Exception as e:
+                    st.error(
+                        "Could not save events — run the CREATE TABLE SQL in the ShutterMuse "
+                        "Supabase SQL Editor first (supabase.com/dashboard/project/"
+                        "muuykfzvrvfktysqlqbc/sql), then try again."
+                    )
+                    st.stop()
 
-        st.success(f"✓ {len(scored)} events loaded. Showing {ev_min_score}+ relevance below.")
-        st.rerun()
+            st.success(f"✓ {len(scored)} events loaded. Showing {ev_min_score}+ relevance below.")
+            st.rerun()
 
     # ── Load saved events ─────────────────────────────────────────
+    # Quietly prune past events on every page load
+    try:
+        from tracker import delete_past_events
+        delete_past_events(user_id=_USER_ID)
+    except Exception:
+        pass
+
     try:
         events = get_events(user_id=_USER_ID, min_score=ev_min_score,
                             status_filter=["new", "interested", "attending"])
@@ -1322,6 +1339,9 @@ elif page == "Events":
         q = ev_search.lower()
         events = [e for e in events if q in (e.get("title","") + e.get("description","") +
                                               e.get("organizer","")).lower()]
+
+    # Sort by relevance score desc, then by date asc as tiebreaker
+    events.sort(key=lambda e: (-(e.get("relevance_score") or 0), e.get("start_date") or ""))
 
     st.markdown(f'<div class="section-label">{len(events)} events · sorted by relevance</div>',
                 unsafe_allow_html=True)
@@ -1468,6 +1488,13 @@ elif page == "Run Pipeline":
             else:
                 st.info(f"{len(new_jobs)} new (unseen) jobs to score")
 
+            # Enrich LinkedIn jobs with full descriptions before scoring
+            li_empty = [j for j in new_jobs if "linkedin.com" in (j.get("url") or "") and not j.get("description")]
+            if li_empty:
+                with st.spinner(f"Fetching descriptions for {len(li_empty)} LinkedIn jobs..."):
+                    from fetcher import enrich_jobs
+                    new_jobs = enrich_jobs(new_jobs)
+
             if not new_jobs:
                 st.success("Nothing new to score. Queue is up to date.")
             else:
@@ -1524,6 +1551,46 @@ elif page == "Run Pipeline":
             st.success(f"Scraped {len(jobs)} jobs")
             preview = pd.DataFrame(jobs[:20])[["title", "company", "location", "source"]]
             st.dataframe(preview, use_container_width=True, hide_index=True)
+
+    # ── Scraper health ───────────────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:36px">Scraper Health</div>', unsafe_allow_html=True)
+    try:
+        from tracker import get_source_freshness
+        freshness = get_source_freshness(user_id=_USER_ID)
+        if freshness:
+            _STATUS_COLOR = {"fresh": "#D4FF3A", "ok": "#8BC34A", "stale": "#FF6B6B", "unknown": "#888"}
+            _STATUS_LABEL = {"fresh": "Fresh", "ok": "OK", "stale": "Stale", "unknown": "?"}
+            cols = st.columns(len(freshness))
+            for col, f in zip(cols, freshness):
+                status = f["status"]
+                color  = _STATUS_COLOR.get(status, "#888")
+                label  = _STATUS_LABEL.get(status, "?")
+                age    = f["age_hours"]
+                if age is None:
+                    age_str = "—"
+                elif age < 1:
+                    age_str = "<1h ago"
+                elif age < 24:
+                    age_str = f"{age:.0f}h ago"
+                else:
+                    age_str = f"{age/24:.1f}d ago"
+                col.markdown(
+                    f'<div style="background:#1C1C18;border:1px solid #2A2A25;border-radius:8px;padding:12px 14px">'
+                    f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.1em">{f["source"]}</div>'
+                    f'<div style="font-size:18px;font-weight:600;color:#F5F4EE;margin:4px 0">{f["count"]}</div>'
+                    f'<div style="font-size:11px;color:#888;margin-bottom:6px">{age_str}</div>'
+                    f'<span style="background:{color}20;color:{color};font-size:10px;font-family:\'JetBrains Mono\',monospace;'
+                    f'padding:2px 8px;border-radius:4px;text-transform:uppercase">{label}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            stale_sources = [f["source"] for f in freshness if f["status"] == "stale"]
+            if stale_sources:
+                st.warning(f"⚠️ Stale data from: {', '.join(stale_sources)} — run the pipeline to refresh.")
+        else:
+            st.caption("No scrape data yet.")
+    except Exception as e:
+        st.caption(f"Health check unavailable ({e})")
 
     st.markdown('<div class="section-label" style="margin-top:36px">Current Stats</div>', unsafe_allow_html=True)
     try:

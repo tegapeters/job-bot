@@ -8,11 +8,9 @@ from datetime import datetime
 from config import TARGET_ROLES, EXCLUDE_KEYWORDS
 
 WWR_FEEDS = [
+    # The data-science and management-finance category feeds went dead (301).
+    # Programming is the only category still returning relevant results.
     "https://weworkremotely.com/categories/remote-programming-jobs.rss",
-    "https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss",
-    "https://weworkremotely.com/categories/remote-management-finance-jobs.rss",
-    "https://weworkremotely.com/categories/remote-data-science-ai-statistics-jobs.rss",
-    "https://weworkremotely.com/categories/remote-product-jobs.rss",
 ]
 
 TITLE_KEYWORDS = [

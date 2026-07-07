@@ -33,8 +33,8 @@ def _clean(html: str) -> str:
 
 
 def fetch_linkedin_job(url: str) -> dict:
-    """Returns {description, company, salary} using LinkedIn's guest API."""
-    result = {"description": "", "company": "", "salary": ""}
+    """Returns {description, company, salary, posted_at} using LinkedIn's guest API."""
+    result = {"description": "", "company": "", "salary": "", "posted_at": ""}
 
     job_id = _extract_job_id(url)
     api_url = GUEST_API.format(job_id=job_id) if job_id else url
@@ -87,6 +87,15 @@ def fetch_linkedin_job(url: str) -> dict:
         if salary_m:
             result["salary"] = _clean(salary_m.group(1))[:120]
 
+        # Posted date — guest API shows "X days/hours/weeks ago" text
+        ago_m = re.search(r'(\d+)\s+(hour|day|week|month)s?\s+ago', html, re.IGNORECASE)
+        if ago_m:
+            from datetime import datetime, timedelta, timezone
+            n, unit = int(ago_m.group(1)), ago_m.group(2).lower()
+            delta = {"hour": timedelta(hours=n), "day": timedelta(days=n),
+                     "week": timedelta(weeks=n), "month": timedelta(days=n * 30)}[unit]
+            result["posted_at"] = (datetime.now(timezone.utc) - delta).date().isoformat()
+
     except Exception as e:
         print(f"  Fetch error ({url[:60]}): {e}")
     return result
@@ -94,13 +103,18 @@ def fetch_linkedin_job(url: str) -> dict:
 
 def enrich_jobs(jobs: list[dict]) -> list[dict]:
     """Fetch full descriptions for LinkedIn jobs. Non-LinkedIn jobs are skipped
-    (their descriptions come directly from the scraper API/RSS)."""
+    (their descriptions come directly from the scraper API/RSS).
+    Jobs that already have a description are skipped to avoid double-fetching."""
     li_jobs = [j for j in jobs if "linkedin.com" in (j.get("url") or "")]
     other   = [j for j in jobs if "linkedin.com" not in (j.get("url") or "")]
 
-    if li_jobs:
-        print(f"\n🌐 Enriching {len(li_jobs)} LinkedIn jobs (skipping {len(other)} non-LinkedIn)...")
-    for i, job in enumerate(li_jobs):
+    to_fetch  = [j for j in li_jobs if not j.get("description")]
+    already   = [j for j in li_jobs if j.get("description")]
+
+    if to_fetch:
+        print(f"\n🌐 Enriching {len(to_fetch)} LinkedIn jobs "
+              f"({len(already)} already have descriptions, skipping {len(other)} non-LinkedIn)...")
+    for i, job in enumerate(to_fetch):
         url = job.get("url", "")
         print(f"  [{i+1}/{len(li_jobs)}] {job['title'][:55]}", end="", flush=True)
         data = fetch_linkedin_job(url)
@@ -111,10 +125,12 @@ def enrich_jobs(jobs: list[dict]) -> list[dict]:
             print(" ✗ no desc", end="")
         if data["company"] and not job.get("company"):
             job["company"] = data["company"]
+        if data["posted_at"]:
+            job["posted_at"] = data["posted_at"]
         if data["salary"]:
             job["salary_range"] = data["salary"]
             print(f" | {data['salary'][:40]}", end="")
         print()
         time.sleep(0.8)
 
-    return li_jobs + other
+    return to_fetch + already + other

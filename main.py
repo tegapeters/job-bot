@@ -32,6 +32,13 @@ def cmd_scrape():
         print("Nothing new to score.")
         return
 
+    # Enrich LinkedIn jobs with full descriptions before scoring
+    li_count = sum(1 for j in new_jobs if "linkedin.com" in (j.get("url") or "") and not j.get("description"))
+    if li_count:
+        print(f"\n🌐 Enriching {li_count} LinkedIn jobs with full descriptions...")
+        from fetcher import enrich_jobs
+        enrich_jobs(new_jobs)
+
     from config import RESUME_TEXT, TARGET_ROLES, MIN_SALARY
     all_scored, qualified = process_jobs(
         new_jobs,

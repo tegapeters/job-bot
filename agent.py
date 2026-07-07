@@ -71,20 +71,26 @@ Candidate Salary Target: {salary_target}
 Description:
 {description}"""
 
-COVER_LETTER_SYSTEM_TEMPLATE = """Write a concise, compelling cover letter for job applications. 3 paragraphs max.
-Tone: confident, professional, specific — not generic.
-Lead with the most relevant experience for the specific role.
-Do not use filler phrases like "I am writing to express my interest."
-Use the candidate's actual name as it appears in the resume below. Do not invent or assume a name.
+COVER_LETTER_SYSTEM_TEMPLATE = """Write a cover letter body for a job application. 3 paragraphs, ~250–350 words.
+
+Rules:
+- Write ONLY the letter body — no contact header, no address block, no date, no "Dear Hiring Manager" salutation
+- Sign off with just the candidate's full name (as it appears in the resume) on its own line
+- First person throughout — never refer to the candidate in third person
+- Open with the strongest relevant experience match, not a generic intro line
+- Second paragraph: 2–3 specific achievements with numbers or outcomes from the resume
+- Third paragraph: forward-looking — why this company/role, what you bring from day one
+- Never use filler phrases like "I am writing to express my interest" or "I am excited to apply"
+- Be specific to the job description — reference the role's actual requirements
 
 CANDIDATE RESUME:
 {resume}"""
 
-COVER_LETTER_USER_TEMPLATE = """Write a cover letter for this job, signed with the candidate's name from the resume:
+COVER_LETTER_USER_TEMPLATE = """Write a cover letter body for this role:
 
 Title: {title}
 Company: {company}
-Description:
+Job Description:
 {description}"""
 
 
@@ -108,12 +114,6 @@ _SKILL_VOCAB = [
     "tableau", "power bi", "looker", "metabase", "qlik", "dax",
     # Databases
     "postgresql", "mysql", "mongodb", "cassandra", "dynamodb", "elasticsearch",
-    # Healthcare / nursing
-    "nursing", "registered nurse", " rn ", "bsn", "msn", "icu", "ccu", "critical care",
-    "emergency", "med-surg", "oncology", "clinical", "patient care", "patient safety",
-    "epic", "meditech", "ehr", "emr", "hipaa", "medication administration",
-    "physician", "hospital", "medical", "healthcare", "surgery", "pharmacy",
-    "radiology", "ventilator", "intubation", "acls", "bls", "pals", "ccrn",
     # Finance / biz
     "excel", "financial analysis", "accounting", "budget", "forecasting",
     "accounts payable", "quickbooks", "sap", "oracle financials",
@@ -166,8 +166,11 @@ _SALARY_PATTERNS = [
 
 
 def _to_dollars(val: str) -> int:
-    """Convert string like '120,000' or '120' (K) to integer dollars."""
-    n = int(val.replace(",", ""))
+    """Convert string like '120,000', '120' (K), or '50.5' (hourly) to integer dollars."""
+    try:
+        n = int(float(val.replace(",", "")))
+    except (ValueError, TypeError):
+        return 0
     return n * 1000 if n < 1000 else n
 
 
@@ -448,7 +451,7 @@ def generate_cover_letter(job: dict, resume_text: str = None) -> str | None:
     try:
         msg = client.messages.create(
             model=LETTER_MODEL,
-            max_tokens=600,
+            max_tokens=900,
             system=[{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user_text}],
         )

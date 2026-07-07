@@ -19,6 +19,10 @@ TITLE_KEYWORDS = [
 
 LEVEL_BLOCKLIST = ["junior", "entry", "intern", "associate"]
 
+# Jobicy tag queries that return relevant results. "data-engineer" returns 404;
+# "data", "analytics", and "python" are the supported tags that match our roles.
+SCRAPE_TAGS = ["data", "analytics", "python"]
+
 
 def _make_id(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:16]
@@ -44,18 +48,19 @@ def scrape_jobicy(max_results: int = 50, target_roles: list[str] = None, min_sal
     jobs = []
     seen = set()
 
-    try:
-        resp = requests.get(
-            API,
-            params={"count": max_results, "geo": "usa"},
-            timeout=12,
-        )
-        if resp.status_code != 200:
-            print(f"  Jobicy: HTTP {resp.status_code}")
-            return []
+    for tag in SCRAPE_TAGS:
+        try:
+            resp = requests.get(
+                API,
+                params={"count": max_results, "geo": "usa", "tag": tag},
+                timeout=12,
+            )
+            if resp.status_code != 200:
+                print(f"  Jobicy: HTTP {resp.status_code} (tag={tag})")
+                continue
 
-        data = resp.json().get("jobs", [])
-        for j in data:
+            data = resp.json().get("jobs", [])
+            for j in data:
                 title = j.get("jobTitle", "")
                 level = j.get("jobLevel", "")
                 url = j.get("url", "")
@@ -94,7 +99,7 @@ def scrape_jobicy(max_results: int = 50, target_roles: list[str] = None, min_sal
                     "cover_letter": None,
                     "salary_range": f"${salary_min:,}–${j['salaryMax']:,}" if salary_min and j.get("salaryMax") else None,
                 })
-    except Exception as e:
-        print(f"  Jobicy error: {e}")
+        except Exception as e:
+            print(f"  Jobicy error (tag={tag}): {e}")
 
     return jobs
