@@ -116,7 +116,7 @@ def enrich_jobs(jobs: list[dict]) -> list[dict]:
               f"({len(already)} already have descriptions, skipping {len(other)} non-LinkedIn)...")
     for i, job in enumerate(to_fetch):
         url = job.get("url", "")
-        print(f"  [{i+1}/{len(li_jobs)}] {job['title'][:55]}", end="", flush=True)
+        print(f"  [{i+1}/{len(to_fetch)}] {job['title'][:55]}", end="", flush=True)
         data = fetch_linkedin_job(url)
         if data["description"]:
             job["description"] = data["description"]

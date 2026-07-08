@@ -1521,7 +1521,7 @@ elif page == "Run Pipeline":
             if len(new_jobs) > BETA_JOB_LIMIT:
                 st.info(f"Beta limit: pre-ranking {len(new_jobs)} new jobs, keeping top {BETA_JOB_LIMIT}...")
                 from agent import score_job_cheap
-                _resume = st.session_state.get("resume_text")
+                _resume = st.session_state.get("resume_text") or ""
                 _roles  = st.session_state.get("target_roles")
                 _sal    = st.session_state.get("min_salary", 0)
                 for j in new_jobs:

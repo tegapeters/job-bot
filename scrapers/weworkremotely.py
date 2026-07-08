@@ -21,23 +21,24 @@ _ALL_LIVE_FEEDS = [
 # Maps role keywords → which feeds are most relevant.
 # Feeds not in this map still get searched if no roles match (fallback to all).
 _FEED_AFFINITY: dict[str, list[str]] = {
-    "engineer":        ["remote-programming-jobs", "remote-devops-sysadmin-jobs"],
-    "developer":       ["remote-programming-jobs"],
-    "devops":          ["remote-devops-sysadmin-jobs"],
-    "infrastructure":  ["remote-devops-sysadmin-jobs"],
-    "cloud":           ["remote-devops-sysadmin-jobs"],
-    "product":         ["remote-product-jobs"],
-    "analyst":         ["remote-product-jobs", "remote-programming-jobs"],
-    "manager":         ["remote-product-jobs"],
-    "design":          ["remote-design-jobs"],
-    "ux":              ["remote-design-jobs"],
-    "ui ":             ["remote-design-jobs"],
-    "support":         ["remote-customer-support-jobs"],
-    "customer success":["remote-customer-support-jobs"],
-    "data":            ["remote-programming-jobs", "remote-product-jobs"],
-    "scientist":       ["remote-programming-jobs"],
-    "machine learning":["remote-programming-jobs"],
-    "ai ":             ["remote-programming-jobs"],
+    # All keys space-padded for consistent word-boundary matching.
+    " engineer ":         ["remote-programming-jobs", "remote-devops-sysadmin-jobs"],
+    " developer ":        ["remote-programming-jobs"],
+    " devops ":           ["remote-devops-sysadmin-jobs"],
+    " infrastructure ":   ["remote-devops-sysadmin-jobs"],
+    " cloud ":            ["remote-devops-sysadmin-jobs"],
+    " product ":          ["remote-product-jobs"],
+    " analyst ":          ["remote-product-jobs", "remote-programming-jobs"],
+    " manager ":          ["remote-product-jobs"],
+    " design ":           ["remote-design-jobs"],
+    " ux ":               ["remote-design-jobs"],
+    " ui ":               ["remote-design-jobs"],
+    " support ":          ["remote-customer-support-jobs"],
+    " customer success ": ["remote-customer-support-jobs"],
+    " data ":             ["remote-programming-jobs", "remote-product-jobs"],
+    " scientist ":        ["remote-programming-jobs"],
+    " machine learning ": ["remote-programming-jobs"],
+    " ai ":               ["remote-programming-jobs"],
 }
 
 
