@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Bug scan & health checks
+    runs-on: ubuntu-latest
+
+    # Dummy secrets so config.py imports don't crash on None
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder_anon_key
+      ANTHROPIC_API_KEY: placeholder_anthropic_key
+      EVENTS_SUPABASE_URL: https://placeholder.supabase.co
+      EVENTS_SUPABASE_KEY: placeholder_events_key
+      EVENTS_SERVICE_ROLE_KEY: placeholder_events_svc_key
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── Check 1: Syntax ─────────────────────────────────────────────
+      - name: "✅ Check 1 — Syntax: all Python files"
+        run: |
+          echo "Checking syntax across all .py files..."
+          find . -name "*.py" \
+            -not -path "./.git/*" \
+            -not -path "./__pycache__/*" \
+            | sort \
+            | xargs python -m py_compile \
+            && echo "All files pass syntax check."
+
+      # ── Check 2: Scraper routing ────────────────────────────────────
+      - name: "✅ Check 2 — Scraper routing for 5 user types"
+        run: |
+          python - <<'EOF'
+          from scrapers.jobicy import _derive_tags
+          from scrapers.weworkremotely import _select_feeds
+
+          cases = [
+              ("Data Engineer",     ["Data Engineer", "Senior Data Engineer"]),
+              ("Attorney",          ["Attorney", "Associate Attorney", "Legal Counsel"]),
+              ("Registered Nurse",  ["Registered Nurse", "Clinical Nurse"]),
+              ("Marketing Manager", ["Marketing Manager", "Content Marketing"]),
+              ("UX Designer",       ["UX Designer", "Product Designer"]),
+          ]
+
+          failed = False
+          for label, roles in cases:
+              tags  = _derive_tags(roles)
+              feeds = _select_feeds(roles)
+              print(f"{label}: jobicy={tags}, wwr_feeds={len(feeds)}")
+              if not tags:
+                  print(f"  FAIL: {label} — empty Jobicy tags")
+                  failed = True
+              if not feeds:
+                  print(f"  FAIL: {label} — no WWR feeds")
+                  failed = True
+
+          if failed:
+              raise SystemExit(1)
+          print("Routing OK for all user types.")
+          EOF
+
+      # ── Check 3: EXCLUDE_KEYWORDS drift ────────────────────────────
+      - name: "✅ Check 3 — EXCLUDE_KEYWORDS contains no profession blocks"
+        run: |
+          python - <<'EOF'
+          import re, ast
+
+          with open("config.py") as f:
+              src = f.read()
+
+          m = re.search(r"EXCLUDE_KEYWORDS\s*=\s*(\[.*?\])", src, re.DOTALL)
+          if not m:
+              raise SystemExit("Could not locate EXCLUDE_KEYWORDS in config.py")
+
+          keywords = ast.literal_eval(m.group(1))
+          allowed  = {"junior", "entry level", "entry-level", "intern"}
+          leaked   = [k for k in keywords if k.lower() not in allowed]
+
+          if leaked:
+              print(f"FAIL: profession-specific terms in EXCLUDE_KEYWORDS: {leaked}")
+              raise SystemExit(1)
+
+          print(f"EXCLUDE_KEYWORDS OK: {keywords}")
+          EOF
+
+      # ── Check 4: Skill extraction covers non-tech professions ───────
+      - name: "✅ Check 4 — Skill extraction works for non-tech resumes"
+        run: |
+          python - <<'EOF'
+          from agent import _extract_skills
+
+          cases = {
+              "lawyer":   (
+                  "Experienced litigation attorney specializing in contract law and intellectual property. "
+                  "Legal research, deposition preparation, compliance.",
+                  {"litigation", "contract law", "intellectual property", "legal research"}
+              ),
+              "nurse":    (
+                  "Registered nurse with ICU and clinical experience. "
+                  "Patient care, ehr, emr, hipaa compliance, epic certified.",
+                  {"patient care", "ehr", "hipaa", "clinical"}
+              ),
+              "marketer": (
+                  "Digital marketing manager. SEO, content marketing, HubSpot, "
+                  "social media, email marketing, google analytics.",
+                  {"seo", "content marketing", "social media", "email marketing"}
+              ),
+              "designer": (
+                  "UX designer. Figma, wireframing, prototyping, user experience research, "
+                  "design systems, user interface.",
+                  {"figma", "wireframing", "user experience", "design systems"}
+              ),
+          }
+
+          failed = False
+          for role, (resume, expected) in cases.items():
+              found   = _extract_skills(resume)
+              missing = expected - found
+              if missing:
+                  print(f"FAIL {role}: missing {missing} (found {sorted(found)})")
+                  failed = True
+              else:
+                  print(f"PASS {role}: {sorted(found)}")
+
+          if failed:
+              raise SystemExit(1)
+          print("Skill extraction OK for all professions.")
+          EOF
+
+      # ── Check 5: Config personal-value leak ─────────────────────────
+      - name: "✅ Check 5 — No personal values outside RESUME_TEXT / APPLICANT_INFO"
+        run: |
+          python - <<'EOF'
+          import re
+
+          with open("config.py") as f:
+              lines = f.readlines()
+
+          # Lines inside personal-data sections are intentional — skip them
+          skip_sections = {"RESUME_TEXT", "APPLICANT_INFO"}
+          in_skip = False
+          issues  = []
+
+          personal_patterns = [
+              (r"tegapeters11@gmail\.com", "personal email"),
+              (r"832[.\-]660[.\-]1325",   "personal phone"),
+              (r"\bTega\b",               "personal first name"),
+              (r"\bEshareturi\b",          "personal last name"),
+              (r"tegapeters(?!11)",        "personal GitHub handle"),
+          ]
+
+          for i, line in enumerate(lines, 1):
+              stripped = line.strip()
+              # Track section boundaries
+              if any(s in stripped for s in skip_sections):
+                  in_skip = True
+              if in_skip and stripped == '"""' and i > 1:
+                  in_skip = False
+                  continue
+              if in_skip:
+                  continue
+              # Check outside personal sections
+              for pat, label in personal_patterns:
+                  if re.search(pat, line):
+                      issues.append(f"  Line {i}: {label} — {stripped[:80]}")
+
+          if issues:
+              print("FAIL: personal values found outside safe sections:")
+              for iss in issues:
+                  print(iss)
+              raise SystemExit(1)
+
+          print("Config OK — no personal value leaks detected.")
+          EOF
