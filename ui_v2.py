@@ -804,7 +804,7 @@ if page == "Setup":
                 if uploaded.type == "application/pdf":
                     import fitz  # PyMuPDF
                     doc = fitz.open(stream=uploaded.read(), filetype="pdf")
-                    uploaded_text = "\n".join(page.get_text() for page in doc)
+                    uploaded_text = "\n".join(p.get_text() for p in doc)
                 elif uploaded.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                     from docx import Document
                     doc = Document(uploaded)
@@ -929,13 +929,8 @@ if page == "Setup":
             except Exception as e:
                 st.warning(f"Could not suggest roles: {e}")
 
-    # Use a stable session key for the text area value — avoids pop() destroying it on rerun
-    if "_suggested_roles" in st.session_state:
-        role_value = st.session_state.pop("_suggested_roles")
-        st.session_state["_roles_text_area"] = role_value
-    else:
-        # Fall back to saved roles; empty string when session was cleared
-        role_value = st.session_state.get("_roles_text_area") or default_roles
+    # Read suggested roles without popping — pop caused the text area to revert on next interaction
+    role_value = st.session_state.get("_roles_text_area") or default_roles
 
     roles_input = st.text_area(
         "Target roles",
@@ -1628,7 +1623,7 @@ elif page == "Run Pipeline":
 
                 if qualified:
                     st.markdown('<div class="section-label" style="margin-top:20px">Qualified Jobs</div>', unsafe_allow_html=True)
-                    q_df = pd.DataFrame(qualified)[["title", "company", "score", "score_reason", "seniority"]]
+                    q_df = pd.DataFrame(qualified).reindex(columns=["title", "company", "score", "score_reason", "seniority"])
                     st.dataframe(q_df, use_container_width=True, hide_index=True)
 
     with col2:
@@ -1717,11 +1712,11 @@ elif page == "Run Pipeline":
         with_sub = run_df[run_df["jobs_new"].fillna(0) > 0]
         if not with_sub.empty and with_sub["qualified_pct"].notna().any():
             best = with_sub.loc[with_sub["qualified_pct"].idxmax()]
-            lbl = best.get("run_label") or "(no label)"
+            lbl = best["run_label"] if pd.notna(best["run_label"]) else "(no label)"
             st.caption(
                 f"Best qualified rate in this list: **{lbl}** — "
                 f"{best['qualified_pct']}% qualified "
-                f"({int(best.get('jobs_qualified') or 0)}/{int(best.get('jobs_new') or 0)} new jobs)"
+                f"({int(best['jobs_qualified'] or 0)}/{int(best['jobs_new'] or 0)} new jobs)"
             )
         st.dataframe(display_df, use_container_width=True, hide_index=True)
         csv_buf = io.StringIO()
