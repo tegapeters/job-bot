@@ -823,7 +823,8 @@ if page == "Setup":
     # ── Target roles ─────────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
 
-    saved_roles = st.session_state.get("target_roles") or []
+    from config import TARGET_ROLES as _DEFAULT_ROLES
+    saved_roles = st.session_state.get("target_roles") or _DEFAULT_ROLES
     default_roles = "\n".join(saved_roles)
 
     suggest_col, _ = st.columns([1, 3])
