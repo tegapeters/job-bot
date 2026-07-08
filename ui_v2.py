@@ -578,9 +578,9 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
         with col1:
             st.markdown(f"**Location:** {job.get('location', 'Unknown')}")
             st.markdown(f"**Score reason:** {job.get('score_reason', '')}")
-            # Show extracted salary range if available, otherwise show match status
+            # Use stored salary_range first; only re-parse description as fallback
             from agent import _extract_salary_from_text
-            salary_range = _extract_salary_from_text(job.get("description", ""))
+            salary_range = job.get("salary_range") or _extract_salary_from_text(job.get("description", ""))
             salary_match = job.get("salary_match", "Unknown")
             if salary_range:
                 match_label = {"Yes": "✅", "No": "❌", "Unknown": "—"}.get(salary_match, "—")
@@ -1091,10 +1091,12 @@ elif page == "Review Queue":
         cat_filter = st.multiselect("Category", all_cats, default=all_cats)
 
     total_in_db = len(queue)
+    unfiltered_queue = queue  # keep reference for purge button — avoids second DB query
+    stale_count = sum(1 for j in queue if (_days_in_queue(j) or 0) > 14)
     if hide_old:
         queue = [j for j in queue if (_days_in_queue(j) or 0) <= 14]
     queue = [j for j in queue if _categorize(j.get("title","")) in cat_filter]
-    stale_hidden = total_in_db - len(queue)
+    stale_hidden = stale_count if hide_old else 0
 
     personalize = st.toggle(
         "Learn from my history",
@@ -1150,7 +1152,7 @@ elif page == "Review Queue":
     with summary_col:
         st.markdown(f'<div class="section-label">{" · ".join(parts)}</div>', unsafe_allow_html=True)
     with purge_col:
-        stale_jobs = [j for j in safe_get_queue(min_score=queue_min_score) if (_days_in_queue(j) or 0) > 14]
+        stale_jobs = [j for j in unfiltered_queue if (_days_in_queue(j) or 0) > 14]
         if stale_jobs:
             if st.button(f"Dismiss {len(stale_jobs)} stale", type="secondary", help="Mark all jobs older than 14 days as Skipped"):
                 for j in stale_jobs:
