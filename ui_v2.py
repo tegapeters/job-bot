@@ -841,20 +841,42 @@ if page == "Setup":
                 import anthropic as _ant
                 from config import ANTHROPIC_API_KEY
                 _ac = _ant.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+                # Capture whatever the user currently has in the text area
+                current_roles_raw = st.session_state.get("_roles_text_area") or "\n".join(
+                    st.session_state.get("target_roles") or []
+                )
+                current_roles = [r.strip() for r in current_roles_raw.splitlines() if r.strip()]
+
+                if current_roles:
+                    existing_block = "ROLES THE USER HAS ALREADY SET:\n" + "\n".join(current_roles) + "\n\n"
+                    instruction = (
+                        "The user has already manually selected the roles above. "
+                        "Treat those as high-priority — keep every one that is a strong fit for this resume. "
+                        "Add any additional titles from the resume that are missing. "
+                        "Only remove a manually-set role if it is a genuinely poor fit (wrong field entirely). "
+                        "Output the final merged list as job titles only, one per line, no bullets, no explanations. "
+                        "Include seniority level where appropriate. 10–15 titles total.\n\n"
+                    )
+                else:
+                    existing_block = ""
+                    instruction = (
+                        "List 10–15 specific job titles this person should target in their job search. "
+                        "Output ONLY the job titles, one per line, no bullets, no explanations, no numbering. "
+                        "Include seniority level where appropriate.\n\n"
+                    )
+
                 _msg = _ac.messages.create(
                     model="claude-haiku-4-5",
-                    max_tokens=300,
+                    max_tokens=400,
                     messages=[{
                         "role": "user",
                         "content": (
-                            "Based on this resume, list 8–12 specific job titles this person should target "
-                            "in their job search. Output ONLY the job titles, one per line, no bullets, "
-                            "no explanations, no numbering. Include seniority level where appropriate.\n\n"
+                            f"{existing_block}{instruction}"
                             f"RESUME:\n{extracted_text[:3000]}"
                         ),
                     }],
                 )
-                # Store in session state and also directly set the text area value
                 st.session_state["_suggested_roles"] = _msg.content[0].text.strip()
                 st.session_state["_roles_text_area"] = st.session_state["_suggested_roles"]
             except Exception as e:
