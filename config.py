@@ -13,6 +13,10 @@ TARGET_ROLES = [
     "Senior Analytics Engineer",
     "Senior Data Analyst",
     "Senior Business Intelligence Engineer",
+    "Business Intelligence Engineer",
+    "Senior Business Analyst",
+    "Data Scientist",
+    "Business Systems Analyst",
 ]
 
 LOCATIONS_REMOTE = ["Remote", "United States"]
