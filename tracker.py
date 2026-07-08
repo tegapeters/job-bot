@@ -87,6 +87,7 @@ def upsert_jobs(jobs: list[dict], user_id: str | None = None):
             "salary_match": j.get("salary_match", "Unknown"),
             "salary_range": j.get("salary_range") or "",
             "cover_letter": j.get("cover_letter", ""),
+            "scored_by": j.get("scored_by", ""),
         }
         if user_id:
             row["user_id"] = user_id

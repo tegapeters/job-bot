@@ -321,6 +321,7 @@ def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0) ->
             )
             parsed = _parse_score_response(msg.content[0].text.strip())
             job.update(parsed)
+            job["scored_by"] = SCORE_MODEL
             return job
         except anthropic.RateLimitError:
             if attempt < 2:
@@ -433,6 +434,7 @@ def score_job_cheap(
     job["score_reason"] = ", ".join(reasons) if reasons else "heuristic estimate"
     job["seniority"] = "Unknown"
     job["salary_match"] = "Unknown"
+    job["scored_by"] = "heuristic"
     return job
 
 

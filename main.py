@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS job_applications (
   seniority     TEXT,
   salary_match  TEXT,
   cover_letter  TEXT,
+  scored_by     TEXT DEFAULT '',
   created_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

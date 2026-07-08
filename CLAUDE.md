@@ -98,6 +98,7 @@ scrapers/* → main.py cmd_scrape()
 | `seniority` | TEXT | Junior / Mid / Senior / Director |
 | `salary_match` | TEXT | Yes / No / Unknown |
 | `cover_letter` | TEXT | Only present for 8+ scored jobs |
+| `scored_by` | TEXT | `claude-sonnet-4-6` or `heuristic` — which model produced the score |
 | `created_at` | TIMESTAMPTZ | Auto |
 
 **Deduplication strategy:**
