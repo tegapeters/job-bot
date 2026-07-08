@@ -87,19 +87,28 @@ def score_job_embed(
         title_reason = "role not matched"
 
     # ── Salary filter ─────────────────────────────────────────────
-    salary_nums = re.findall(r"\$?\s?(\d{2,3})\s?[kK]\b", job_text)
+    from agent import _extract_salary_from_text, _to_dollars
     effective_min = min_salary or 0
     salary_penalty = 0.0
     salary_reason = ""
     salary_match = "Unknown"
-    if salary_nums:
-        high_k = max(int(n) for n in salary_nums) * 1000
-        if effective_min and high_k < effective_min:
-            salary_penalty = 1.0
-            salary_reason = "salary below minimum"
-            salary_match = "No"
-        else:
-            salary_match = "Yes"
+
+    # Use stored salary_range first (set by fetcher from LinkedIn API), then extract
+    extracted_salary = job.get("salary_range") or _extract_salary_from_text(job_text)
+    if extracted_salary and not job.get("salary_range"):
+        job["salary_range"] = extracted_salary  # cache for UI display, same as Claude scorer
+
+    if extracted_salary:
+        # Parse the high end of the range to compare against minimum
+        nums = re.findall(r"[\d,]+", extracted_salary.replace("$", ""))
+        if nums:
+            high_val = _to_dollars(max(nums, key=lambda x: int(x.replace(",", "") or 0)))
+            if effective_min and high_val < effective_min:
+                salary_penalty = 1.0
+                salary_reason = "salary below minimum"
+                salary_match = "No"
+            else:
+                salary_match = "Yes"
 
     # ── Combine → 1-10 ───────────────────────────────────────────
     # Weights: similarity (6 pts) + skill overlap (2 pts) + role fit (1 pt) + base (1 pt)

@@ -94,7 +94,18 @@ def upsert_jobs(jobs: list[dict], user_id: str | None = None):
         rows.append(row)
 
     if rows:
-        sb.table("job_applications").upsert(rows, on_conflict="id").execute()
+        try:
+            sb.table("job_applications").upsert(rows, on_conflict="id").execute()
+        except Exception as e:
+            if "scored_by" in str(e):
+                # PostgREST schema cache hasn't picked up the scored_by column yet.
+                # Strip it and retry — column will populate once cache reloads.
+                for r in rows:
+                    r.pop("scored_by", None)
+                sb.table("job_applications").upsert(rows, on_conflict="id").execute()
+                print("  ⚠️  scored_by column not in schema cache — saved without it (reload cache to fix)")
+            else:
+                raise
         print(f"  💾 Saved {len(rows)} jobs to Supabase")
 
 
