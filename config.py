@@ -6,21 +6,14 @@ and are only used for CLI scrape runs (main.py). All UI runs use per-user sessio
 
 # ── Job Preferences ────────────────────────────────────────────────
 TARGET_ROLES = [
-    "Data Engineer",
-    "Senior Data Engineer",
-    "AI Engineer",
-    "GenAI Engineer",
-    "Generative AI Engineer",
-    "Machine Learning Engineer",
-    "Analytics Engineer",
-    "Senior Analytics Engineer",
-    "Senior Data Analyst",
-    "Senior Business Intelligence Engineer",
-    "Business Intelligence Engineer",
-    "Senior Business Analyst",
     "Data Scientist",
-    "Business Systems Analyst",
+    "Generative AI Engineer",
+    "Senior Analytics Engineer",
+    "Business Intelligence Engineer",
+    "Data Engineer",
+    "Senior Business Analyst",
     "Senior Systems Analyst",
+    "Senior Data Analyst",
 ]
 
 LOCATIONS_REMOTE = ["Remote", "United States"]
