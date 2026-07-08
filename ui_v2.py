@@ -416,16 +416,6 @@ st.markdown("""
 
   /* ── Hide Streamlit health status badge ── */
   [data-testid="stStatusWidget"] { display: none !important; }
-
-  /* ── iPad: vertically centre auth card ── */
-  @media (min-width: 600px) and (min-height: 700px) {
-    section[data-testid="stMain"] > div:first-child {
-      display: flex !important;
-      flex-direction: column !important;
-      justify-content: center !important;
-      min-height: calc(100vh - 60px) !important;
-    }
-  }
 </style>
 """, unsafe_allow_html=True)
 
