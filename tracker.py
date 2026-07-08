@@ -14,14 +14,39 @@ def get_client():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
+def _secret(name: str) -> str | None:
+    import os
+    val = os.getenv(name)
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(name)
+    except Exception:
+        return None
+
+
 def get_events_client():
-    """Separate Supabase client pointing to ShutterMuse DB for networking_events."""
-    if not EVENTS_SUPABASE_URL or not EVENTS_SUPABASE_KEY:
+    """Separate Supabase client pointing to ShutterMuse DB for networking_events.
+
+    Uses service_role key when available so RLS doesn't block cross-project
+    writes (ShutterMuse auth.uid() is always NULL from the main project context).
+    Application-level user_id filtering still enforces data isolation.
+    """
+    if not EVENTS_SUPABASE_URL:
         raise RuntimeError(
-            "EVENTS_SUPABASE_URL and EVENTS_SUPABASE_KEY must be set. "
+            "EVENTS_SUPABASE_URL must be set. "
+            "Add it to .env or Streamlit Cloud secrets."
+        )
+    # Prefer service_role key — bypasses RLS for cross-project writes
+    svc_key = _secret("EVENTS_SERVICE_ROLE_KEY")
+    key = svc_key or EVENTS_SUPABASE_KEY
+    if not key:
+        raise RuntimeError(
+            "EVENTS_SUPABASE_KEY or EVENTS_SERVICE_ROLE_KEY must be set. "
             "Add them to .env or Streamlit Cloud secrets."
         )
-    return create_client(EVENTS_SUPABASE_URL, EVENTS_SUPABASE_KEY)
+    return create_client(EVENTS_SUPABASE_URL, key)
 
 
 def _scope_id(raw_id: str, user_id: str | None) -> str:

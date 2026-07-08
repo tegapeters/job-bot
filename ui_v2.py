@@ -1326,9 +1326,8 @@ elif page == "Events":
                     upsert_events(scored, user_id=_USER_ID)
                 except Exception as e:
                     st.error(
-                        "Could not save events — run the CREATE TABLE SQL in the ShutterMuse "
-                        "Supabase SQL Editor first (supabase.com/dashboard/project/"
-                        "muuykfzvrvfktysqlqbc/sql), then try again."
+                        f"Could not save events ({e}). "
+                        "Check that EVENTS_SERVICE_ROLE_KEY is set in Streamlit Cloud secrets."
                     )
                     st.stop()
 
