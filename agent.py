@@ -459,6 +459,17 @@ def score_job(
         if (stage1.get("score") or 0) >= hybrid_min:
             return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
         return stage1
+    if backend == "embed":
+        from embedder import score_job_embed
+        stage1 = score_job_embed(job, resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)
+        embed_score = stage1.get("score") or 0
+        if embed_score >= 8:
+            # Confident match — skip score confirmation, cover letter handles the Claude call
+            return stage1
+        if embed_score >= 5:
+            # Uncertain band — confirm with Claude Sonnet
+            return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
+        return stage1  # Clear reject (≤4), no Claude call
     return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
 
 
@@ -505,7 +516,7 @@ def process_jobs(
     Pass 2: full scoring (claude / hybrid / cheap) on jobs that pass threshold.
     """
     mode = (scoring_backend or SCORING_BACKEND or "claude").strip().lower()
-    if mode not in {"cheap", "hybrid", "claude"}:
+    if mode not in {"cheap", "hybrid", "claude", "embed"}:
         mode = "claude"
 
     cheap_kwargs = dict(resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)

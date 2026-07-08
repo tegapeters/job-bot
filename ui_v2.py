@@ -1529,9 +1529,9 @@ elif page == "Run Pipeline":
         )
         scoring_mode = st.selectbox(
             "Scoring mode",
-            ["cheap", "hybrid", "claude"],
+            ["embed", "hybrid", "claude", "cheap"],
             index=0,
-            help="cheap = no LLM cost, hybrid = cheap pre-filter + Claude, claude = best quality/highest cost",
+            help="embed = TF-IDF similarity + Claude for uncertain band (recommended) · hybrid = keyword pre-filter + Claude · claude = Claude for everything · cheap = no LLM",
         )
         hybrid_min = st.slider(
             "Hybrid Claude threshold",
