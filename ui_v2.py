@@ -1528,6 +1528,13 @@ elif page == "Run Pipeline":
             index=0,
             help="embed = TF-IDF similarity + Claude for uncertain band (recommended) · hybrid = keyword pre-filter + Claude · claude = Claude for everything · cheap = no LLM",
         )
+        _mode_info = {
+            "embed":  "🟢 TF-IDF scorer → `claude-sonnet-4-6` for uncertain band only. Cheapest. Recommended.",
+            "hybrid": "🟡 Keyword pre-filter → `claude-sonnet-4-6` for jobs above threshold.",
+            "claude": "🔵 `claude-sonnet-4-6` scores every job. Most accurate, most expensive.",
+            "cheap":  "⚪ Keyword heuristic only — no LLM, no API cost.",
+        }
+        st.caption(_mode_info.get(scoring_mode, ""))
         hybrid_min = st.slider(
             "Hybrid Claude threshold",
             min_value=1,
@@ -1623,7 +1630,7 @@ elif page == "Run Pipeline":
 
                 if qualified:
                     st.markdown('<div class="section-label" style="margin-top:20px">Qualified Jobs</div>', unsafe_allow_html=True)
-                    q_df = pd.DataFrame(qualified).reindex(columns=["title", "company", "score", "score_reason", "seniority"])
+                    q_df = pd.DataFrame(qualified).reindex(columns=["title", "company", "score", "scored_by", "score_reason", "seniority"])
                     st.dataframe(q_df, use_container_width=True, hide_index=True)
 
     with col2:
