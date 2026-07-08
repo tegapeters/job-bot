@@ -2,7 +2,10 @@
 """
 Job Bot — CLI entry point
 Usage:
-  python main.py scrape          # Pull new jobs, score them, save to Supabase
+  python main.py scrape                      # Pull new jobs, score with embed (default)
+  python main.py scrape --backend claude     # Force Claude for all scoring
+  python main.py scrape --backend hybrid     # Keyword pre-filter + Claude
+  python main.py scrape --backend cheap      # Heuristic only, no LLM
   python main.py review          # Review queue in terminal
   python main.py apply           # Auto-fill & submit queued applications (review-first)
   python main.py linkedin-login  # One-time LinkedIn login (saves session cookies)
@@ -16,7 +19,19 @@ from tracker import upsert_jobs, get_all_applications, get_seen_ids
 
 
 def cmd_scrape():
-    print("🚀 Starting job pipeline...\n")
+    # Parse --backend flag; default to embed (cheapest, recommended)
+    args = sys.argv[2:]
+    backend = "embed"
+    if "--backend" in args:
+        idx = args.index("--backend")
+        if idx + 1 < len(args):
+            backend = args[idx + 1]
+    valid = {"embed", "hybrid", "claude", "cheap"}
+    if backend not in valid:
+        print(f"Unknown backend '{backend}'. Choose from: {', '.join(sorted(valid))}")
+        return
+
+    print(f"🚀 Starting job pipeline... (backend={backend})\n")
     from config import TARGET_ROLES, MIN_SALARY
     jobs = scrape_all(target_roles=TARGET_ROLES, min_salary=MIN_SALARY)
     if not jobs:
@@ -45,6 +60,7 @@ def cmd_scrape():
         resume_text=RESUME_TEXT,
         target_roles=TARGET_ROLES,
         min_salary=MIN_SALARY,
+        scoring_backend=backend,
     )
     upsert_jobs(all_scored, user_id=None)   # CLI: no user isolation
     print(f"\n🎯 Done. {len(qualified)} jobs scored 7+ queued for review.")
