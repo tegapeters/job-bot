@@ -114,22 +114,57 @@ _SKILL_VOCAB = [
     "tableau", "power bi", "looker", "metabase", "qlik", "dax",
     # Databases
     "postgresql", "mysql", "mongodb", "cassandra", "dynamodb", "elasticsearch",
-    # Finance / biz
-    "excel", "financial analysis", "accounting", "budget", "forecasting",
-    "accounts payable", "quickbooks", "sap", "oracle financials",
-    # Project / ops
+    # Finance / accounting
+    "excel", "financial analysis", "financial modeling", "accounting", "budget",
+    "forecasting", "accounts payable", "accounts receivable", "quickbooks",
+    "sap", "oracle financials", "netsuite", "gaap", "cpa", "audit", "tax",
+    # Project / ops / supply chain
     "project management", "pmp", "agile", "scrum", "kanban", "jira", "confluence",
-    "vendor management", "operations", "logistics", "supply chain",
+    "vendor management", "operations", "logistics", "supply chain", "lean", "six sigma",
+    "process improvement", "okr", "kpi",
     # Web / SWE
     "react", "node", "django", "flask", "rails", "spring", "angular", "vue",
     "rest api", "graphql", "microservices",
-    # Other professions
-    "teacher", "education", "curriculum", "instruction",
-    "legal", "attorney", "paralegal", "compliance",
-    "marketing", "seo", "content", "copywriting", "social media",
-    "sales", "crm", "salesforce", "account management",
-    "design", "figma", "ux", "ui", "user research",
-    "construction", "civil engineering", "architecture",
+    # Legal
+    "litigation", "contract law", "legal research", "case management", "deposition",
+    "compliance", "regulatory", "intellectual property", "paralegal", "attorney",
+    "legal writing", "mediation", "arbitration", "contract review", "due diligence",
+    # Healthcare / clinical
+    "nursing", "clinical", "patient care", "medical", "healthcare", "ehr", "emr",
+    "hipaa", "patient safety", "clinical trials", "pharmacy", "therapy", "epic",
+    "care coordination", "case management",
+    # Sales / business development
+    "salesforce", "crm", "prospecting", "negotiation", "territory management",
+    "quota", "pipeline", "b2b", "b2c", "account executive", "business development",
+    "lead generation", "cold calling", "account management", "revenue",
+    # Marketing
+    "seo", "sem", "content marketing", "email marketing", "social media",
+    "brand management", "digital marketing", "campaign management", "copywriting",
+    "google analytics", "hubspot", "marketo", "demand generation", "paid media",
+    "growth marketing",
+    # HR / recruiting
+    "recruiting", "talent acquisition", "onboarding", "benefits administration",
+    "compensation", "employee relations", "hris", "workday", "performance management",
+    "workforce planning", "organizational development",
+    # Product management
+    "product management", "product roadmap", "stakeholder management", "user research",
+    "sprint planning", "go-to-market", "product strategy", "user stories", "backlog",
+    "product analytics",
+    # Design / UX
+    "figma", "sketch", "adobe xd", "user experience", "user interface", "wireframing",
+    "prototyping", "design systems", "ux research", "visual design", "interaction design",
+    # Writing / content
+    "content writing", "technical writing", "grant writing", "editorial",
+    "journalism", "communication", "documentation",
+    # Customer success / support
+    "customer success", "client management", "customer retention", "nps",
+    "zendesk", "intercom", "customer experience", "implementation",
+    # Education
+    "curriculum", "instruction", "lesson planning", "classroom management",
+    "e-learning", "lms", "training", "facilitation",
+    # Engineering (non-software)
+    "civil engineering", "mechanical engineering", "electrical engineering",
+    "structural", "autocad", "solidworks", "construction management",
 ]
 
 
@@ -353,19 +388,8 @@ def score_job_cheap(
         elif len(overlap) == 0:
             score -= 2
             reasons.append("no skill overlap with resume")
-    else:
-        # CLI mode: hardcoded patterns
-        skill_patterns = [
-            r"\bpython\b", r"\bsql\b", r"\bdata engineer(ing)?\b", r"\bai\b",
-            r"\bgenai\b", r"\bmachine learning\b", r"\banalyst\b", r"\bagile\b",
-        ]
-        hits = sum(1 for p in skill_patterns if re.search(p, job_text))
-        if hits >= 4:
-            score += 2
-            reasons.append("strong skill overlap")
-        elif hits >= 2:
-            score += 1
-            reasons.append("skill overlap")
+    # No resume provided — skip skill overlap entirely (neutral, no penalty/bonus).
+    # Applying hardcoded tech patterns here would silently break non-tech users.
 
     # ── Location ──────────────────────────────────────────────────
     is_remote = any(kw in location for kw in ("remote", "work from home", "anywhere"))
@@ -553,14 +577,34 @@ def score_event(event: dict, resume_text: str = None) -> dict:
     # Domain keyword signals — capped so one event can't inflate to 10 on domains alone
     title = event.get("title", "").lower()
     domain_hits = {
-        "ai":         ["ai", "artificial intelligence", "llm", "genai", "generative", "gpt", "claude", "openai"],
-        "data":       ["data engineering", "data engineer", "etl", "pipeline", "spark", "databricks", "dbt"],
-        "ml":         ["machine learning", "deep learning", "neural", "model", "tensorflow", "pytorch"],
-        "cloud":      ["aws", "gcp", "azure", "cloud", "oci"],
-        "analytics":  ["analytics", "business intelligence", "bi", "tableau", "power bi", "sql"],
-        "networking": ["networking", "career", "hiring", "job fair", "recruiter", "panel", "workshop"],
-        "business":   ["mba", "business school", "graduate program", "alumni", "rotary", "chamber of commerce", "entrepreneurship", "startup"],
-        "university": ["university", "college", "graduate", "research", "faculty", "academic", "stem"],
+        "ai":             ["ai", "artificial intelligence", "llm", "genai", "generative", "gpt", "claude", "openai"],
+        "data":           ["data engineering", "data engineer", "etl", "pipeline", "spark", "databricks", "dbt"],
+        "ml":             ["machine learning", "deep learning", "neural", "model", "tensorflow", "pytorch"],
+        "cloud":          ["aws", "gcp", "azure", "cloud", "oci"],
+        "analytics":      ["analytics", "business intelligence", "bi", "tableau", "power bi", "sql"],
+        "networking":     ["networking", "career", "hiring", "job fair", "recruiter", "panel", "workshop"],
+        "business":       ["mba", "business school", "chamber of commerce", "entrepreneurship", "startup", "leadership"],
+        "university":     ["university", "college", "graduate", "research", "faculty", "academic", "stem"],
+        "legal":          ["legal", "attorney", "lawyer", "law", "bar association", "litigation", "compliance",
+                           "paralegal", "contract", "intellectual property", "regulatory"],
+        "healthcare":     ["healthcare", "medical", "nursing", "clinical", "patient", "hospital", "health",
+                           "pharmacy", "therapy", "wellness", "public health"],
+        "sales":          ["sales", "business development", "revenue", "account executive", "prospecting",
+                           "crm", "salesforce", "pipeline", "b2b", "b2c"],
+        "marketing":      ["marketing", "seo", "content", "digital marketing", "brand", "campaign",
+                           "social media", "growth", "demand generation"],
+        "hr":             ["human resources", "hr", "recruiting", "talent", "people ops", "onboarding",
+                           "benefits", "compensation", "employee"],
+        "finance":        ["finance", "accounting", "fintech", "investment", "audit", "tax",
+                           "financial planning", "cfo", "cpa", "budgeting"],
+        "design":         ["design", "ux", "ui", "user experience", "product design", "figma",
+                           "creative", "visual", "branding"],
+        "product":        ["product management", "product manager", "roadmap", "user research",
+                           "go-to-market", "product strategy"],
+        "education":      ["education", "teaching", "curriculum", "e-learning", "training",
+                           "professional development", "edtech"],
+        "engineering":    ["engineering", "mechanical", "civil", "electrical", "structural",
+                           "infrastructure", "construction", "manufacturing"],
     }
     matched_domains: list[str] = []
     domain_score = 0

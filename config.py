@@ -47,20 +47,11 @@ ONSITE_OK = True  # US-wide for in-person
 
 MIN_SALARY = 140_000  # USD
 
+# Only truly universal exclusions — no profession-specific blocks.
+# Individual users should filter irrelevant roles through their target_roles list,
+# not through a global deny-list that breaks other professions.
 EXCLUDE_KEYWORDS = [
-    "defense", "military", "clearance", "secret clearance", "top secret",
-    "government contractor", "dod", "department of defense",
-    "junior", "entry level", "entry-level", "associate", "intern",
-    # Non-tech PM / construction / civil / physical infrastructure
-    "construction", "mechanical", "electrical", "civil", "structural",
-    "roofing", "mep", "hvac", "wastewater", "solid waste", "aviation",
-    "power generation", "utility locating", "geospatial", "ambient air",
-    "data center build", "workspace renovation", "traveling senior",
-    # Hardware / embedded / systems (not data/AI)
-    "embedded", "firmware", "robotics", "radar", "silicon",
-    "compiler", "server manageability", "fpga", "rtos", "kernel",
-    "data center site", "data center engineer", "network device",
-    "wearable", "hpc support", "devops engineer",
+    "junior", "entry level", "entry-level", "intern",
 ]
 
 # ── Resume / Background ─────────────────────────────────────────────

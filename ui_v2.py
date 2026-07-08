@@ -898,6 +898,23 @@ if page == "Setup":
         label_visibility="collapsed",
     )
 
+    # Show extracted skills so user can verify the system understands their background
+    if extracted_text and len(extracted_text.strip()) > 100:
+        try:
+            from agent import _extract_skills
+            detected = sorted(_extract_skills(extracted_text))
+            if detected:
+                with st.expander(f"Skills detected from your resume ({len(detected)} found)", expanded=False):
+                    st.caption("These are the skills Job Pal will use to score job fit. If key skills are missing, make sure they appear in your resume text.")
+                    st.markdown(" ".join(
+                        f'<span style="background:#1C1C18;border:1px solid #2A2A25;border-radius:4px;'
+                        f'padding:2px 8px;font-family:\'JetBrains Mono\',monospace;font-size:11px;'
+                        f'color:#D4FF3A;margin:2px;display:inline-block">{s}</span>'
+                        for s in detected
+                    ), unsafe_allow_html=True)
+        except Exception:
+            pass
+
     if st.button("Save & Go to Pipeline →", type="primary", use_container_width=True):
         if not extracted_text or len(extracted_text.strip()) < 100:
             st.error("Resume looks too short or empty — upload a file or paste your resume text.")
@@ -1482,10 +1499,15 @@ elif page == "Run Pipeline":
             help="Turn off to avoid extra model calls during testing.",
         )
         if st.button("▶ Run Full Pipeline", type="primary", use_container_width=True):
+            _pipeline_roles = st.session_state.get("target_roles") or []
+            if not _pipeline_roles:
+                st.error("No target roles set — go to **Setup** and add the roles you're looking for before running.")
+                st.stop()
+
             with st.spinner("Scraping jobs..."):
                 from scrapers import scrape_all
                 jobs = scrape_all(
-                    target_roles=st.session_state.get("target_roles") or None,
+                    target_roles=_pipeline_roles,
                     min_salary=st.session_state.get("min_salary", 0),
                 )
 

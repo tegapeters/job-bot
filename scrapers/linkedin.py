@@ -115,7 +115,7 @@ def _parse_jobs_from_html(html: str, source_url: str) -> list[dict]:
 def scrape_linkedin(max_per_query: int = 15, target_roles: list[str] = None) -> list[dict]:
     jobs = []
     seen = set()
-    roles = target_roles if target_roles else TARGET_ROLES
+    roles = target_roles if target_roles else TARGET_ROLES  # CLI fallback only
 
     for role in roles:
         query = requests.utils.quote(role)

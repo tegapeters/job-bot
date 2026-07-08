@@ -10,28 +10,97 @@ from config import EXCLUDE_KEYWORDS, MIN_SALARY
 
 API = "https://jobicy.com/api/v2/remote-jobs"
 
-TITLE_KEYWORDS = [
-    "data scientist", "data science", "business analyst", "business systems",
-    "data engineer", "ml engineer", "machine learning", "ai engineer",
-    "technical project", "project manager", "analytics", "intelligence",
-    "generative ai", "genai", "llm", "program manager",
-]
+LEVEL_BLOCKLIST = ["junior", "entry", "intern"]
 
-LEVEL_BLOCKLIST = ["junior", "entry", "intern", "associate"]
+# Maps role/profession keywords → Jobicy API tag slugs (verified working).
+# Used to derive per-user tags from their target_roles instead of hardcoding.
+_TAG_MAP: dict[str, str] = {
+    # Data / tech
+    "data":            "data",
+    "analyst":         "analytics",
+    "analytics":       "analytics",
+    "engineer":        "data",
+    "scientist":       "data",
+    "python":          "python",
+    "machine learning":"data",
+    "ml ":             "data",
+    " ai ":            "data",
+    "genai":           "data",
+    "generative":      "data",
+    "intelligence":    "analytics",
+    # Business / ops
+    "business":        "business",
+    "operations":      "operations",
+    "consultant":      "consulting",
+    "consulting":      "consulting",
+    "product":         "product",
+    "program manager": "operations",
+    "project manager": "operations",
+    "systems analyst": "business",
+    # Finance
+    "finance":         "finance",
+    "accounting":      "accounting",
+    "accountant":      "accounting",
+    "financial":       "finance",
+    # Sales / marketing
+    "sales":           "sales",
+    "marketing":       "marketing",
+    "growth":          "marketing",
+    "content":         "writing",
+    "copywriter":      "writing",
+    "writing":         "writing",
+    # CRM / Salesforce
+    "salesforce":      "salesforce",
+    "crm":             "salesforce",
+    # Design
+    "design":          "design",
+    "ux":              "design",
+    "ui ":             "design",
+    # Legal
+    "legal":           "legal",
+    "attorney":        "legal",
+    "lawyer":          "legal",
+    "paralegal":       "legal",
+    # Healthcare
+    "healthcare":      "healthcare",
+    "medical":         "healthcare",
+    "nurse":           "healthcare",
+    "clinical":        "healthcare",
+    # HR
+    "recruiting":      "operations",
+    "talent":          "operations",
+    "human resources": "operations",
+}
 
-# Jobicy tag queries that return relevant results. "data-engineer" returns 404;
-# "data", "analytics", and "python" are the supported tags that match our roles.
-SCRAPE_TAGS = ["data", "analytics", "python"]
+_FALLBACK_TAGS = ["data", "analytics", "business"]
+
+
+def _derive_tags(target_roles: list[str] | None) -> list[str]:
+    """Derive up to 4 Jobicy tag slugs from the user's target roles."""
+    if not target_roles:
+        return _FALLBACK_TAGS
+    seen: set[str] = set()
+    tags: list[str] = []
+    for role in target_roles:
+        role_l = f" {role.lower()} "  # word-boundary padding
+        for keyword, tag in _TAG_MAP.items():
+            if keyword in role_l and tag not in seen:
+                seen.add(tag)
+                tags.append(tag)
+        if len(tags) >= 4:
+            break
+    return tags if tags else _FALLBACK_TAGS
 
 
 def _make_id(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:16]
 
 
-def _matches_target(title: str, target_roles: list[str] = None) -> bool:
+def _matches_target(title: str, target_roles: list[str] | None) -> bool:
     t = title.lower()
-    keywords = [r.lower() for r in target_roles] if target_roles else TITLE_KEYWORDS
-    return any(k in t for k in keywords)
+    if not target_roles:
+        return True
+    return any(r.lower() in t for r in target_roles)
 
 
 def _is_excluded(title: str, desc: str) -> bool:
@@ -47,8 +116,9 @@ def _is_junior(title: str, level: str) -> bool:
 def scrape_jobicy(max_results: int = 50, target_roles: list[str] = None, min_salary: int = 0) -> list[dict]:
     jobs = []
     seen = set()
+    tags = _derive_tags(target_roles)
 
-    for tag in SCRAPE_TAGS:
+    for tag in tags:
         try:
             resp = requests.get(
                 API,
@@ -74,8 +144,8 @@ def scrape_jobicy(max_results: int = 50, target_roles: list[str] = None, min_sal
                 if _is_junior(title, level):
                     continue
 
-                # Salary gate — use user's min_salary if set, else config floor
-                effective_min = min_salary if min_salary else MIN_SALARY
+                # Salary gate — only apply if user has set a floor
+                effective_min = min_salary or 0
                 salary_min = j.get("salaryMin")
                 if salary_min and effective_min and int(salary_min) < effective_min:
                     continue
