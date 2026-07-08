@@ -105,6 +105,12 @@ def render_auth_wall():
     # Constrain form width
     _, col, _ = st.columns([1, 2, 1])
     with col:
+        st.markdown(
+            '<div style="text-align:center;font-size:12px;color:#666;margin-bottom:8px">'
+            'First time? Select <b style="color:#D4FF3A">Create Account</b> below.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         tab_login, tab_signup, tab_otp = st.tabs(["Sign In", "Create Account", "Magic Link"])
 
         # ── Email / Password login ────────────────────────────────

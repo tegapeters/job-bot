@@ -378,6 +378,53 @@ st.markdown("""
     [data-testid="stDataFrame"] > div {
       min-width: 480px;
     }
+
+    /* ── Sidebar toggle: larger tap target + accent colour ── */
+    [data-testid="collapsedControl"] {
+      width: 44px !important;
+      height: 44px !important;
+      background: #D4FF3A !important;
+      border-radius: 8px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    [data-testid="collapsedControl"] svg {
+      color: #0A0A08 !important;
+      fill: #0A0A08 !important;
+      width: 20px !important;
+      height: 20px !important;
+    }
+  }
+
+  /* ── Landscape phones (height ≤ 500px) ── */
+  @media (max-height: 500px) and (max-width: 900px) {
+    div[style*="max-width:440px"],
+    div[style*="max-width: 440px"] {
+      margin-top: 8px !important;
+    }
+    div[style*="font-size:42px"],
+    div[style*="font-size: 42px"] {
+      font-size: 20px !important;
+      margin-bottom: 8px !important;
+      line-height: 1.2 !important;
+    }
+    div[style*="margin-bottom:10px"] {
+      margin-bottom: 4px !important;
+    }
+  }
+
+  /* ── Hide Streamlit health status badge ── */
+  [data-testid="stStatusWidget"] { display: none !important; }
+
+  /* ── iPad: vertically centre auth card ── */
+  @media (min-width: 600px) and (min-height: 700px) {
+    section[data-testid="stMain"] > div:first-child {
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: center !important;
+      min-height: calc(100vh - 60px) !important;
+    }
   }
 </style>
 """, unsafe_allow_html=True)
