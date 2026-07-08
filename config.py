@@ -1,5 +1,7 @@
 """
-Job Bot Configuration — Tega Eshareturi
+Job Pal — app-level defaults and CLI configuration.
+Personal values (resume, applicant info) live in RESUME_TEXT and APPLICANT_INFO
+and are only used for CLI scrape runs (main.py). All UI runs use per-user sessions.
 """
 
 # ── Job Preferences ────────────────────────────────────────────────
