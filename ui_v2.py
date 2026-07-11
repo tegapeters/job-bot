@@ -476,7 +476,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigate",
-        ["Setup", "Run Pipeline", "Review Queue", "Applied", "Interviews", "Events", "Dashboard", "All Applications"],
+        ["Setup", "Run Pipeline", "Review Queue", "Applied", "Interviews", "Events", "Dashboard", "All Applications", "Assistant"],
         label_visibility="collapsed",
     )
 
@@ -1740,3 +1740,144 @@ elif page == "Run Pipeline":
             else:
                 st.session_state["_confirm_clear_queue"] = True
                 st.warning("Clears all unreviewed jobs. Click again to confirm.")
+
+# ── Assistant ───────────────────────────────────────────────────────
+elif page == "Assistant":
+    page_header("Assistant", "Your job search <em>co-pilot.</em>")
+
+    resume_text = st.session_state.get("resume_text") or ""
+    if not resume_text:
+        st.warning("No resume loaded. Go to **Setup** first — the assistant uses it to personalise answers.")
+        st.stop()
+
+    def _build_system_prompt() -> str:
+        apps = []
+        try:
+            apps = get_all_applications(user_id=_USER_ID) or []
+        except Exception:
+            pass
+
+        queue  = [a for a in apps if a.get("status") == "new" and (a.get("score") or 0) >= 7]
+        applied = [a for a in apps if a.get("status") == "applied"]
+        interviews = [a for a in apps if a.get("status") == "interview"]
+
+        queue_lines = "\n".join(
+            f"- {a.get('title')} @ {a.get('company')} | score {a.get('score')}/10 | {a.get('salary_range') or 'no salary'}"
+            for a in sorted(queue, key=lambda x: x.get("score") or 0, reverse=True)[:10]
+        ) or "Empty"
+
+        applied_lines = "\n".join(
+            f"- {a.get('title')} @ {a.get('company')}"
+            for a in applied[:8]
+        ) or "None yet"
+
+        interview_lines = "\n".join(
+            f"- {a.get('title')} @ {a.get('company')}"
+            for a in interviews
+        ) or "None"
+
+        target_roles = st.session_state.get("target_roles") or []
+        min_salary   = st.session_state.get("min_salary") or 0
+
+        return f"""You are Job Pal Assistant, an AI job search co-pilot built into the Job Pal platform.
+You have full context on this user's resume, job queue, and application history.
+
+USER PROFILE
+Target roles: {', '.join(target_roles) or 'not set'}
+Minimum salary: {'${:,}'.format(min_salary) if min_salary else 'not set'}
+
+RESUME SUMMARY
+{resume_text[:3000]}
+
+REVIEW QUEUE (top 10 scored 7+, awaiting decision)
+{queue_lines}
+
+APPLIED ({len(applied)} total)
+{applied_lines}
+
+INTERVIEWS ({len(interviews)} active)
+{interview_lines}
+
+TOTAL TRACKED: {len(apps)} jobs
+
+You help the user with:
+- Understanding why jobs scored high or low
+- Deciding which queue jobs to apply to first
+- Writing or refining cover letters, thank-you emails, follow-ups
+- Interview prep for companies in their pipeline
+- Resume gap analysis against specific roles
+- Salary negotiation guidance
+- General job search strategy
+
+Be direct, specific, and use the data above. Keep answers concise unless asked for detail.
+Never invent job details — only reference what's shown. Do not give legal or financial advice."""
+
+    import anthropic as _anthropic
+
+    def _stream_response(history: list[dict]) -> None:
+        api_key = None
+        try:
+            from config import ANTHROPIC_API_KEY
+            api_key = ANTHROPIC_API_KEY
+        except Exception:
+            pass
+
+        client = _anthropic.Anthropic(api_key=api_key)
+
+        def _gen():
+            with client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=_build_system_prompt(),
+                messages=history,
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+
+        with st.chat_message("assistant", avatar="🤖"):
+            response = st.write_stream(_gen())
+
+        st.session_state["_chat_history"].append({"role": "assistant", "content": response})
+
+    # ── Chat state ─────────────────────────────────────────────────
+    if "chat_history" not in st.session_state:
+        st.session_state["_chat_history"] = []
+
+    # Suggested starters
+    if not st.session_state["_chat_history"]:
+        st.markdown('<div class="section-label">Suggested questions</div>', unsafe_allow_html=True)
+        suggestions = [
+            "Which jobs in my queue should I apply to first?",
+            "What skills am I missing for the roles I'm targeting?",
+            "Write a follow-up email for a job I applied to last week.",
+            "How should I prepare for a Data Scientist interview?",
+            "What salary should I negotiate for a Senior Analytics role?",
+        ]
+        cols = st.columns(len(suggestions))
+        for col, suggestion in zip(cols, suggestions):
+            with col:
+                if st.button(suggestion, key=f"sug_{suggestion[:20]}", use_container_width=True):
+                    st.session_state["_chat_history"].append({"role": "user", "content": suggestion})
+                    st.rerun()
+
+    # Render history
+    for msg in st.session_state["_chat_history"]:
+        avatar = "👤" if msg["role"] == "user" else "🤖"
+        with st.chat_message(msg["role"], avatar=avatar):
+            st.markdown(msg["content"])
+
+    # Stream any pending unanswered user message
+    history = st.session_state["_chat_history"]
+    if history and history[-1]["role"] == "user":
+        _stream_response(history)
+
+    # Input
+    if prompt := st.chat_input("Ask about your job search…"):
+        st.session_state["_chat_history"].append({"role": "user", "content": prompt})
+        st.rerun()
+
+    # Clear button
+    if st.session_state["_chat_history"]:
+        if st.button("Clear conversation", key="clear_chat"):
+            st.session_state["_chat_history"] = []
+            st.rerun()
