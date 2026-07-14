@@ -38,8 +38,7 @@ def sign_out():
         pass
     for key in ("jp_auth", "resume_text", "session_uid", "target_roles",
                 "min_salary", "_session_restored", "_user_session_restored_for",
-                "otp_sent", "otp_pending_email", "_suggested_roles",
-                "ev_manual_cities"):
+                "_suggested_roles", "ev_manual_cities"):
         st.session_state.pop(key, None)
 
 
@@ -111,7 +110,7 @@ def render_auth_wall():
             '</div>',
             unsafe_allow_html=True,
         )
-        tab_login, tab_signup, tab_otp = st.tabs(["Sign In", "Create Account", "Magic Link"])
+        tab_login, tab_signup = st.tabs(["Sign In", "Create Account"])
 
         # ── Email / Password login ────────────────────────────────
         with tab_login:
@@ -167,51 +166,5 @@ def render_auth_wall():
                     except Exception as e:
                         st.error(f"Sign up failed: {e}")
 
-        # ── Magic link / OTP ──────────────────────────────────────
-        with tab_otp:
-            st.caption("Enter your email — we'll send a one-time code. No password needed.")
-            if not st.session_state.get("otp_sent"):
-                with st.form("otp_send_form"):
-                    otp_email = st.text_input("Email", placeholder="you@example.com")
-                    send_btn = st.form_submit_button("Send Code", use_container_width=True)
-                if send_btn:
-                    if not otp_email:
-                        st.error("Email required.")
-                    else:
-                        try:
-                            _sb().auth.sign_in_with_otp({
-                                "email": otp_email,
-                                "options": {"should_create_user": True},
-                            })
-                            st.session_state["otp_pending_email"] = otp_email
-                            st.session_state["otp_sent"] = True
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Could not send code: {e}")
-            else:
-                pending = st.session_state.get("otp_pending_email", "")
-                st.info(f"Code sent to **{pending}** — check your inbox (and spam).")
-                with st.form("otp_verify_form"):
-                    code = st.text_input("6-digit code", placeholder="123456", max_chars=6)
-                    verify_btn = st.form_submit_button(
-                        "Verify", type="primary", use_container_width=True
-                    )
-                if verify_btn:
-                    try:
-                        resp = _sb().auth.verify_otp({
-                            "email": pending,
-                            "token": code.strip(),
-                            "type": "email",
-                        })
-                        _store_session(resp.user, resp.session.access_token)
-                        st.session_state.pop("otp_sent", None)
-                        st.session_state.pop("otp_pending_email", None)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Verification failed — check the code and try again. ({e})")
-                if st.button("Use a different email", key="otp_reset"):
-                    st.session_state.pop("otp_sent", None)
-                    st.session_state.pop("otp_pending_email", None)
-                    st.rerun()
 
     st.stop()
