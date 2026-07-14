@@ -657,6 +657,58 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 unsafe_allow_html=True,
             )
 
+        # ── Questionnaire Helper ──────────────────────────────────
+        st.markdown('<div class="section-label" style="margin-top:16px">Questionnaire Helper</div>', unsafe_allow_html=True)
+        with st.expander("📋 Draft answers to application questions", expanded=False):
+            q_key   = f"q_input_{job['id']}"
+            ans_key = f"q_ans_{job['id']}"
+            questions = st.text_area(
+                "Paste the application questions",
+                key=q_key,
+                placeholder="1. Why do you want to work at this company?\n2. Describe a time you used data to drive a decision.\n3. ...",
+                height=140,
+            )
+            if st.button("✍️ Draft answers", key=f"q_submit_{job['id']}", type="secondary"):
+                resume_text = st.session_state.get("resume_text") or ""
+                if not questions.strip():
+                    st.warning("Paste some questions first.")
+                elif not resume_text:
+                    st.warning("No resume loaded — go to Setup first.")
+                else:
+                    system = f"""You are a job application assistant helping the user draft honest, specific answers to application questionnaire questions.
+
+JOB: {job.get('title')} at {job.get('company')}
+LOCATION: {job.get('location', 'Not specified')}
+WHY IT SCORED WELL: {job.get('score_reason', '')}
+
+JOB DESCRIPTION:
+{(job.get('description') or '')[:3000]}
+
+USER RESUME:
+{resume_text[:2500]}
+
+{('COVER LETTER (use for tone/framing reference):\n' + job['cover_letter'][:800]) if job.get('cover_letter') else ''}
+
+Instructions:
+- Answer each question using specific, honest examples drawn from the resume
+- Keep each answer 2-4 sentences unless the question clearly needs more
+- Format: restate the question briefly, then answer it
+- Do not invent experience not in the resume"""
+
+                    import anthropic as _anthropic
+                    _ac = _anthropic.Anthropic()
+                    with _ac.messages.stream(
+                        model="claude-sonnet-4-6",
+                        max_tokens=1500,
+                        system=system,
+                        messages=[{"role": "user", "content": f"Draft answers to these questions:\n\n{questions}"}],
+                    ) as stream:
+                        response = st.write_stream(stream.text_stream)
+                    st.session_state[ans_key] = response
+
+            if st.session_state.get(ans_key) and not questions.strip():
+                st.markdown(st.session_state[ans_key])
+
 def _categorize(title: str) -> str:
     t = (title or "").lower()
     if any(k in t for k in ["genai", "gen ai", "generative", "llm", "ai engineer", "ml engineer", "machine learning"]):
