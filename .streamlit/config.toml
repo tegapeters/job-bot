@@ -7,3 +7,6 @@ primaryColor = "#D4FF3A"
 
 [browser]
 gatherUsageStats = false
+
+[server]
+fileWatcherType = "watchdog"
