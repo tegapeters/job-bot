@@ -17,7 +17,7 @@ from tracker import (
 
 # ── Page config ────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Job Bot",
+    page_title="Job Pal",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -89,7 +89,7 @@ st.markdown("""
 
 # ── Sidebar nav ────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### 🤖 Job Bot")
+    st.markdown("### 🤖 Job Pal")
     st.markdown("---")
     page = st.radio(
         "Navigate",

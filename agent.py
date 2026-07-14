@@ -20,7 +20,6 @@ from config import (
     ENABLE_COVER_LETTERS,
     LOCATIONS_REMOTE,
     LOCATIONS_ONSITE,
-    MIN_SALARY,
 )
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
@@ -405,7 +404,7 @@ def score_job_cheap(
         reasons.append("onsite location match")
 
     # ── Salary ────────────────────────────────────────────────────
-    effective_min = min_salary if min_salary else MIN_SALARY
+    effective_min = min_salary or 0  # 0 = no floor; never fall back to config.MIN_SALARY
     salary_nums = re.findall(r"\$?\s?(\d{2,3})\s?[kK]\b", job_text)
     if salary_nums and effective_min:
         high_k = max(int(n) for n in salary_nums) * 1000
@@ -463,13 +462,11 @@ def score_job(
         from embedder import score_job_embed
         stage1 = score_job_embed(job, resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)
         embed_score = stage1.get("score") or 0
-        if embed_score >= 8:
-            # Confident match — skip score confirmation, cover letter handles the Claude call
-            return stage1
-        if embed_score >= 5:
-            # Uncertain band — confirm with Claude Sonnet
+        if embed_score >= 3:
+            # Send everything above clear-reject floor to Sonnet — avoids DS vocabulary bias
+            # where TF-IDF inflates DS roles past 8 and bypasses Sonnet entirely.
             return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
-        return stage1  # Clear reject (≤4), no Claude call
+        return stage1  # Clear reject (1-2), no Claude call
     return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
 
 

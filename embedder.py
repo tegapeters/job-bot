@@ -21,9 +21,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 
 # Similarity score ceiling for normalization.
-# Most resume-vs-job-description pairs land between 0.05–0.35.
-# Jobs at or above this ceiling get the full similarity contribution.
-_SIM_CEIL = 0.30
+# Most resume-vs-job-description pairs land between 0.05–0.20 for a DS/analytics resume
+# vs job descriptions. Lowered from 0.30 so moderate-similarity jobs score higher
+# and reach the Claude escalation band rather than being rejected outright.
+_SIM_CEIL = 0.15
 
 
 def _tfidf_sim(text_a: str, text_b: str) -> float:

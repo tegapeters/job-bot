@@ -41,22 +41,34 @@ def cmd_scrape():
     # CLI mode: no user_id — seen IDs are raw (unscoped) 16-char hashes
     seen = get_seen_ids(user_id=None)
     new_jobs = [j for j in jobs if j["id"] not in seen]
-    print(f"  {len(jobs)} scraped · {len(seen)} already seen · {len(new_jobs)} new\n")
 
-    if not new_jobs:
+    # Collapse duplicates by (normalized title, normalized company) — same posting
+    # scraped with different URLs gets different MD5 IDs but is the same job.
+    # Keep the copy with the longest description so scoring has the most data.
+    _seen_tc: dict[tuple, dict] = {}
+    for j in new_jobs:
+        key = (j.get("title", "").strip().lower(), j.get("company", "").strip().lower())
+        existing = _seen_tc.get(key)
+        if existing is None or len(j.get("description") or "") > len(existing.get("description") or ""):
+            _seen_tc[key] = j
+    deduped_jobs = list(_seen_tc.values())
+
+    print(f"  {len(jobs)} scraped · {len(seen)} already seen · {len(new_jobs)} new · {len(new_jobs)-len(deduped_jobs)} title+company dupes removed\n")
+
+    if not deduped_jobs:
         print("Nothing new to score.")
         return
 
     # Enrich LinkedIn jobs with full descriptions before scoring
-    li_count = sum(1 for j in new_jobs if "linkedin.com" in (j.get("url") or "") and not j.get("description"))
+    li_count = sum(1 for j in deduped_jobs if "linkedin.com" in (j.get("url") or "") and not j.get("description"))
     if li_count:
         print(f"\n🌐 Enriching {li_count} LinkedIn jobs with full descriptions...")
         from fetcher import enrich_jobs
-        enrich_jobs(new_jobs)
+        enrich_jobs(deduped_jobs)
 
     from config import RESUME_TEXT, TARGET_ROLES, MIN_SALARY
     all_scored, qualified = process_jobs(
-        new_jobs,
+        deduped_jobs,
         resume_text=RESUME_TEXT,
         target_roles=TARGET_ROLES,
         min_salary=MIN_SALARY,

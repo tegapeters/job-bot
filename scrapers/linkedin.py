@@ -2,6 +2,7 @@
 LinkedIn Jobs scraper — uses public search RSS + HTML fallback
 """
 import hashlib
+import html as _html_lib
 import re
 import time
 import requests
@@ -51,11 +52,11 @@ def _parse_jobs_from_html(html: str, source_url: str) -> list[dict]:
                 if item.get("@type") not in ("JobPosting", "jobPosting"):
                     continue
                 url = item.get("url", "")
-                title = item.get("title", "").strip()
+                title = _html_lib.unescape(item.get("title", "").strip())
                 company = ""
                 org = item.get("hiringOrganization", {})
                 if isinstance(org, dict):
-                    company = org.get("name", "")
+                    company = _html_lib.unescape(org.get("name", ""))
                 if not title or not url or _is_excluded(title, ""):
                     continue
                 jobs.append({
@@ -91,8 +92,8 @@ def _parse_jobs_from_html(html: str, source_url: str) -> list[dict]:
         if url in seen_urls:
             continue
         seen_urls.add(url)
-        title = re.sub(r"<[^>]+>", "", m.group(2)).strip()
-        company = re.sub(r"<[^>]+>", "", m.group(3)).strip()
+        title = _html_lib.unescape(re.sub(r"<[^>]+>", "", m.group(2)).strip())
+        company = _html_lib.unescape(re.sub(r"<[^>]+>", "", m.group(3)).strip())
         if not title or _is_excluded(title, ""):
             continue
         jobs.append({
@@ -112,14 +113,17 @@ def _parse_jobs_from_html(html: str, source_url: str) -> list[dict]:
     return jobs
 
 
-def scrape_linkedin(max_per_query: int = 15, target_roles: list[str] = None) -> list[dict]:
+def scrape_linkedin(max_per_role: int = 15, target_roles: list[str] = None) -> list[dict]:
     jobs = []
     seen = set()
     roles = target_roles if target_roles else TARGET_ROLES  # CLI fallback only
 
     for role in roles:
+        role_count = 0
         query = requests.utils.quote(role)
         for wt_name, wt_code in WORK_TYPES.items():
+            if role_count >= max_per_role:
+                break
             if wt_name == "onsite":
                 # Search across all US onsite cities
                 onsite_locs = [l.replace(" ", "+").replace(",", "%2C") for l in LOCATIONS_ONSITE]
@@ -127,6 +131,8 @@ def scrape_linkedin(max_per_query: int = 15, target_roles: list[str] = None) -> 
                 onsite_locs = ["United+States"]
 
             for loc in onsite_locs:
+                if role_count >= max_per_role:
+                    break
                 url = LI_SEARCH.format(query=query, location=loc, work_type=wt_code)
                 try:
                     resp = requests.get(url, headers=HEADERS, timeout=10)
@@ -137,8 +143,9 @@ def scrape_linkedin(max_per_query: int = 15, target_roles: list[str] = None) -> 
                                 seen.add(j["id"])
                                 j["location"] = loc.replace("+", " ").replace("%2C", ",")
                                 jobs.append(j)
-                                if len(jobs) >= max_per_query * len(roles):
-                                    return jobs
+                                role_count += 1
+                                if role_count >= max_per_role:
+                                    break
                     time.sleep(1.2)  # be polite
                 except Exception as e:
                     print(f"  LinkedIn scrape error ({role}, {wt_name}, {loc}): {e}")

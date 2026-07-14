@@ -684,6 +684,137 @@ def page_header(eyebrow, title_html):
     </div>
     """, unsafe_allow_html=True)
 
+def _build_assistant_system_prompt(page_context: str = "") -> str:
+    """Build the shared assistant system prompt with live pipeline context."""
+    apps = []
+    try:
+        apps = get_all_applications(user_id=_USER_ID) or []
+    except Exception:
+        pass
+    resume_text = st.session_state.get("resume_text") or ""
+    target_roles = st.session_state.get("target_roles") or []
+    min_salary   = st.session_state.get("min_salary") or 0
+
+    queue      = [a for a in apps if a.get("status") == "new" and (a.get("score") or 0) >= 7]
+    applied    = [a for a in apps if a.get("status") == "applied"]
+    interviews = [a for a in apps if a.get("status") == "interview"]
+
+    queue_lines = "\n".join(
+        f"- {a.get('title')} @ {a.get('company')} | score {a.get('score')}/10 | {a.get('salary_range') or 'no salary'}"
+        for a in sorted(queue, key=lambda x: x.get("score") or 0, reverse=True)[:10]
+    ) or "Empty"
+    applied_lines = "\n".join(
+        f"- {a.get('title')} @ {a.get('company')}" for a in applied[:8]
+    ) or "None yet"
+    interview_lines = "\n".join(
+        f"- {a.get('title')} @ {a.get('company')}" for a in interviews
+    ) or "None"
+
+    context_block = f"\nCURRENT PAGE: {page_context}\n" if page_context else ""
+
+    return f"""You are Job Pal Assistant, an AI job search co-pilot built into the Job Pal platform.
+You have full context on this user's resume, job queue, and application history.
+{context_block}
+USER PROFILE
+Target roles: {', '.join(target_roles) or 'not set'}
+Minimum salary: {'${:,}'.format(min_salary) if min_salary else 'not set'}
+
+RESUME SUMMARY
+{resume_text[:3000]}
+
+REVIEW QUEUE (top 10 scored 7+, awaiting decision)
+{queue_lines}
+
+APPLIED ({len(applied)} total)
+{applied_lines}
+
+INTERVIEWS ({len(interviews)} active)
+{interview_lines}
+
+TOTAL TRACKED: {len(apps)} jobs
+
+You help the user with:
+- Understanding why jobs scored high or low
+- Deciding which queue jobs to apply to first
+- Writing or refining cover letters, thank-you emails, follow-ups
+- Interview prep for companies in their pipeline
+- Resume gap analysis against specific roles
+- Salary negotiation guidance
+- General job search strategy
+
+Be direct, specific, and use the data above. Keep answers concise unless asked for detail.
+Never invent job details — only reference what's shown. Do not give legal or financial advice."""
+
+
+def _render_assistant_panel(page_key: str, page_context: str = "") -> None:
+    """Inline assistant panel — collapsible expander at the bottom of any page."""
+    resume_text = st.session_state.get("resume_text") or ""
+    if not resume_text:
+        return  # silently skip — no resume loaded yet
+
+    hist_key = f"_chat_{page_key}"
+    if hist_key not in st.session_state:
+        st.session_state[hist_key] = []
+
+    history = st.session_state[hist_key]
+    has_history = bool(history)
+
+    import anthropic as _anthropic
+
+    def _stream(hist):
+        api_key = None
+        try:
+            from config import ANTHROPIC_API_KEY
+            api_key = ANTHROPIC_API_KEY
+        except Exception:
+            pass
+        _client = _anthropic.Anthropic(api_key=api_key)
+
+        def _gen():
+            with _client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=_build_assistant_system_prompt(page_context),
+                messages=hist,
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+        return _gen
+
+    label = f"Ask the Assistant {'💬' if has_history else '🤖'}"
+    with st.expander(label, expanded=has_history):
+        # Render history
+        for msg in history:
+            avatar = "👤" if msg["role"] == "user" else "🤖"
+            with st.chat_message(msg["role"], avatar=avatar):
+                st.markdown(msg["content"])
+
+        # Stream any pending unanswered user message
+        if history and history[-1]["role"] == "user":
+            with st.chat_message("assistant", avatar="🤖"):
+                response = st.write_stream(_stream(history))
+            st.session_state[hist_key].append({"role": "assistant", "content": response})
+
+        # Input form (clears on submit)
+        with st.form(f"asst_form_{page_key}", clear_on_submit=True):
+            user_input = st.text_input(
+                "Ask about this page or your job search…",
+                label_visibility="collapsed",
+                placeholder="Ask about this page or your job search…",
+            )
+            c1, c2 = st.columns([5, 1])
+            submitted = c2.form_submit_button("Send", type="primary", use_container_width=True)
+
+        if submitted and user_input.strip():
+            st.session_state[hist_key].append({"role": "user", "content": user_input.strip()})
+            st.rerun()
+
+        if history:
+            if st.button("Clear", key=f"clear_asst_{page_key}", type="secondary"):
+                st.session_state[hist_key] = []
+                st.rerun()
+
+
 def metric(col, label, value, sub="", accent=False):
     col.markdown(f"""
     <div class="metric-card{"  accent" if accent else ""}">
@@ -1032,6 +1163,9 @@ elif page == "Dashboard":
     top = df.nlargest(10, "score")[["title", "company", "location", "score", "score_reason", "status"]]
     st.dataframe(top, use_container_width=True, hide_index=True)
 
+    st.markdown("---")
+    _render_assistant_panel("dashboard", "Dashboard — pipeline overview and analytics")
+
 
 # ═══════════════════════════════════════════════════════════════════
 # REVIEW QUEUE
@@ -1148,6 +1282,9 @@ elif page == "Review Queue":
 
     for job in display_queue:
         job_card(job, "rq", ["applied", "skipped", "rejected"])
+
+    st.markdown("---")
+    _render_assistant_panel("queue", "Review Queue — jobs scoring 7+ awaiting your decision")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1272,6 +1409,9 @@ elif page == "All Applications":
                 log_event(selected_id, "status_change", f"-> {new_status}", user_id=_USER_ID)
             st.success(f"Updated → {new_status}")
             st.rerun()
+
+    st.markdown("---")
+    _render_assistant_panel("all_apps", "All Applications — full history and bulk status updates")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1481,6 +1621,9 @@ elif page == "Events":
                     update_event_status(eid, "skipped", user_id=_USER_ID)
                     st.rerun()
 
+    st.markdown("---")
+    _render_assistant_panel("events", "Events — networking events near the user's city")
+
 
 elif page == "Run Pipeline":
     page_header("Pipeline", "Scrape. Score. <em>Apply.</em>")
@@ -1556,6 +1699,15 @@ elif page == "Run Pipeline":
             from tracker import get_seen_ids
             seen = get_seen_ids(user_id=_USER_ID)
             new_jobs = [j for j in jobs if _scope_id(j["id"], _USER_ID) not in seen]
+
+            # Collapse same title+company posted under multiple URLs (keeps longest description)
+            _seen_tc: dict[tuple, dict] = {}
+            for j in new_jobs:
+                key = (j.get("title", "").strip().lower(), j.get("company", "").strip().lower())
+                existing = _seen_tc.get(key)
+                if existing is None or len(j.get("description") or "") > len(existing.get("description") or ""):
+                    _seen_tc[key] = j
+            new_jobs = list(_seen_tc.values())
 
             # Beta cap: sort by cheap score first so the best 50 are selected
             if len(new_jobs) > BETA_JOB_LIMIT:
@@ -1750,68 +1902,6 @@ elif page == "Assistant":
         st.warning("No resume loaded. Go to **Setup** first — the assistant uses it to personalise answers.")
         st.stop()
 
-    def _build_system_prompt() -> str:
-        apps = []
-        try:
-            apps = get_all_applications(user_id=_USER_ID) or []
-        except Exception:
-            pass
-
-        queue  = [a for a in apps if a.get("status") == "new" and (a.get("score") or 0) >= 7]
-        applied = [a for a in apps if a.get("status") == "applied"]
-        interviews = [a for a in apps if a.get("status") == "interview"]
-
-        queue_lines = "\n".join(
-            f"- {a.get('title')} @ {a.get('company')} | score {a.get('score')}/10 | {a.get('salary_range') or 'no salary'}"
-            for a in sorted(queue, key=lambda x: x.get("score") or 0, reverse=True)[:10]
-        ) or "Empty"
-
-        applied_lines = "\n".join(
-            f"- {a.get('title')} @ {a.get('company')}"
-            for a in applied[:8]
-        ) or "None yet"
-
-        interview_lines = "\n".join(
-            f"- {a.get('title')} @ {a.get('company')}"
-            for a in interviews
-        ) or "None"
-
-        target_roles = st.session_state.get("target_roles") or []
-        min_salary   = st.session_state.get("min_salary") or 0
-
-        return f"""You are Job Pal Assistant, an AI job search co-pilot built into the Job Pal platform.
-You have full context on this user's resume, job queue, and application history.
-
-USER PROFILE
-Target roles: {', '.join(target_roles) or 'not set'}
-Minimum salary: {'${:,}'.format(min_salary) if min_salary else 'not set'}
-
-RESUME SUMMARY
-{resume_text[:3000]}
-
-REVIEW QUEUE (top 10 scored 7+, awaiting decision)
-{queue_lines}
-
-APPLIED ({len(applied)} total)
-{applied_lines}
-
-INTERVIEWS ({len(interviews)} active)
-{interview_lines}
-
-TOTAL TRACKED: {len(apps)} jobs
-
-You help the user with:
-- Understanding why jobs scored high or low
-- Deciding which queue jobs to apply to first
-- Writing or refining cover letters, thank-you emails, follow-ups
-- Interview prep for companies in their pipeline
-- Resume gap analysis against specific roles
-- Salary negotiation guidance
-- General job search strategy
-
-Be direct, specific, and use the data above. Keep answers concise unless asked for detail.
-Never invent job details — only reference what's shown. Do not give legal or financial advice."""
-
     import anthropic as _anthropic
 
     def _stream_response(history: list[dict]) -> None:
@@ -1822,13 +1912,13 @@ Never invent job details — only reference what's shown. Do not give legal or f
         except Exception:
             pass
 
-        client = _anthropic.Anthropic(api_key=api_key)
+        _client = _anthropic.Anthropic(api_key=api_key)
 
         def _gen():
-            with client.messages.stream(
+            with _client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=1024,
-                system=_build_system_prompt(),
+                system=_build_assistant_system_prompt("Assistant page — full chat view"),
                 messages=history,
             ) as stream:
                 for text in stream.text_stream:
