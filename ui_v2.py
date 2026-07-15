@@ -1917,7 +1917,7 @@ elif page == "Run Pipeline":
 
                 progress.progress(10, text=f"Analyzing {len(new_jobs)} jobs against your resume...")
                 from agent import process_jobs
-                all_scored, qualified = process_jobs(
+                all_scored, qualified, stage_timings = process_jobs(
                     new_jobs,
                     verbose=False,
                     resume_text=resume_text,
@@ -1930,7 +1930,12 @@ elif page == "Run Pipeline":
 
                 progress.progress(80, text=f"Writing cover letters for {len(qualified)} qualified jobs...")
                 from tracker import upsert_jobs
+                import time as _time
+                _t_save = _time.perf_counter()
                 upsert_jobs(all_scored, user_id=_USER_ID)
+                stage_timings["save_s"] = round(_time.perf_counter() - _t_save, 1)
+                total_s = sum(v for v in stage_timings.values())
+                stage_timings["total_s"] = round(total_s, 1)
 
                 log_experiment_run(
                     run_label=run_label.strip(),
@@ -1942,10 +1947,13 @@ elif page == "Run Pipeline":
                     jobs_qualified=len(qualified),
                     note=run_note.strip(),
                     user_id=_USER_ID,
+                    total_seconds=stage_timings["total_s"],
+                    timing_json=stage_timings,
                 )
 
                 progress.progress(100, text="Done.")
-                st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ added to Review Queue.")
+                _timing_str = f" | ⏱ {stage_timings['total_s']:.0f}s total (score {stage_timings.get('pass2_s',0):.0f}s · enrich {stage_timings.get('enrich_s',0):.0f}s)"
+                st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+{_timing_str}")
 
                 if qualified:
                     st.markdown('<div class="section-label" style="margin-top:20px">Qualified Jobs</div>', unsafe_allow_html=True)
@@ -2027,7 +2035,7 @@ elif page == "Run Pipeline":
         keep_cols = [
             "created_at", "run_label", "cost_mode", "scoring_mode", "hybrid_threshold",
             "cover_letters_enabled", "jobs_scraped", "jobs_new", "jobs_qualified",
-            "qualified_pct", "note",
+            "qualified_pct", "total_seconds", "note",
         ]
         cols = [c for c in keep_cols if c in run_df.columns]
         display_df = run_df[cols].copy()

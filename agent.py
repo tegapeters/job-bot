@@ -516,6 +516,8 @@ def process_jobs(
     Pass 1: fast cheap pre-filter using resume skills + target roles.
     Pass 2: full scoring (claude / hybrid / cheap) on jobs that pass threshold.
     """
+    import time as _time
+
     mode = (scoring_backend or SCORING_BACKEND or "claude").strip().lower()
     if mode not in {"cheap", "hybrid", "claude", "embed"}:
         mode = "claude"
@@ -529,26 +531,32 @@ def process_jobs(
         target_roles=target_roles,
     )
 
-    # Pass 1: cheap pre-filter (now resume-aware, uses user's target_roles)
-    print(f"\n🤖 Pass 1 — pre-filtering {len(jobs)} jobs...")
-    prescored = [score_job_cheap(job, **cheap_kwargs) for job in jobs]
+    timings: dict[str, float] = {}
 
-    to_enrich    = [j for j in prescored if (j.get("score") or 0) >= 5]
+    # Pass 1: cheap pre-filter
+    print(f"\n🤖 Pass 1 — pre-filtering {len(jobs)} jobs...")
+    _t = _time.perf_counter()
+    prescored = [score_job_cheap(job, **cheap_kwargs) for job in jobs]
+    timings["pass1_s"] = round(_time.perf_counter() - _t, 1)
+
+    to_enrich      = [j for j in prescored if (j.get("score") or 0) >= 5]
     rejected_early = [j for j in prescored if (j.get("score") or 0) < 5]
-    print(f"  {len(to_enrich)} passed pre-filter · {len(rejected_early)} rejected early")
+    print(f"  {len(to_enrich)} passed pre-filter · {len(rejected_early)} rejected early  ({timings['pass1_s']}s)")
 
     from fetcher import enrich_jobs
+    _t = _time.perf_counter()
     to_enrich = enrich_jobs(to_enrich)
+    timings["enrich_s"] = round(_time.perf_counter() - _t, 1)
 
     # Pass 2: full scoring — parallel
     n = len(to_enrich)
     print(f"\n🤖 Pass 2 — full scoring {n} jobs (mode={mode}, workers=8)...")
+    _t = _time.perf_counter()
     scored = list(rejected_early)
 
     if n == 0:
         pass
     elif mode == "cheap":
-        # cheap is CPU-only — no benefit from threads, just run inline
         for job in to_enrich:
             scored.append(score_job(job, **score_kwargs))
     else:
@@ -569,10 +577,13 @@ def process_jobs(
                         print(f"  {flag} [{done}/{n}] {result['title']} @ {result.get('company','')} — {result['score']}/10")
                 scored.append(result)
 
+    timings["pass2_s"] = round(_time.perf_counter() - _t, 1)
+
     qualified = [j for j in scored if j["score"] >= REVIEW_MIN_SCORE]
-    print(f"\n✅ {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ | {len(scored)-len(qualified)} below threshold")
+    print(f"\n✅ {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ | {len(scored)-len(qualified)} below threshold  ({timings['pass2_s']}s)")
 
     letters_enabled = ENABLE_COVER_LETTERS if enable_cover_letters is None else bool(enable_cover_letters)
+    _t = _time.perf_counter()
     if letters_enabled and client and mode != "cheap":
         cl_jobs = [j for j in qualified if (j.get("score") or 0) >= COVER_LETTER_MIN_SCORE]
         print(f"\n✍️  Cover letters for {len(cl_jobs)} jobs scoring {COVER_LETTER_MIN_SCORE}+ (workers=3)...")
@@ -592,7 +603,8 @@ def process_jobs(
     else:
         print("\n✍️  Cover letters skipped.")
 
-    return scored, qualified
+    timings["cover_letters_s"] = round(_time.perf_counter() - _t, 1)
+    return scored, qualified, timings
 
 
 # ── Event relevance scoring ────────────────────────────────────────

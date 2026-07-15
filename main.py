@@ -19,6 +19,10 @@ from tracker import upsert_jobs, get_all_applications, get_seen_ids
 
 
 def cmd_scrape():
+    import time
+    from tracker import log_experiment_run
+    from config import ENABLE_COVER_LETTERS
+
     # Parse --backend flag; default to embed (cheapest, recommended)
     args = sys.argv[2:]
     backend = "embed"
@@ -31,9 +35,16 @@ def cmd_scrape():
         print(f"Unknown backend '{backend}'. Choose from: {', '.join(sorted(valid))}")
         return
 
+    t_total = time.perf_counter()
+    timings: dict[str, float] = {}
+
     print(f"🚀 Starting job pipeline... (backend={backend})\n")
     from config import TARGET_ROLES, MIN_SALARY
+
+    t = time.perf_counter()
     jobs = scrape_all(target_roles=TARGET_ROLES, min_salary=MIN_SALARY)
+    timings["scrape_s"] = round(time.perf_counter() - t, 1)
+
     if not jobs:
         print("No jobs found.")
         return
@@ -42,9 +53,7 @@ def cmd_scrape():
     seen = get_seen_ids(user_id=None)
     new_jobs = [j for j in jobs if j["id"] not in seen]
 
-    # Collapse duplicates by (normalized title, normalized company) — same posting
-    # scraped with different URLs gets different MD5 IDs but is the same job.
-    # Keep the copy with the longest description so scoring has the most data.
+    # Collapse duplicates by (normalized title, normalized company)
     _seen_tc: dict[tuple, dict] = {}
     for j in new_jobs:
         key = (j.get("title", "").strip().lower(), j.get("company", "").strip().lower())
@@ -64,17 +73,57 @@ def cmd_scrape():
     if li_count:
         print(f"\n🌐 Enriching {li_count} LinkedIn jobs with full descriptions...")
         from fetcher import enrich_jobs
+        t = time.perf_counter()
         enrich_jobs(deduped_jobs)
+        timings["enrich_prefetch_s"] = round(time.perf_counter() - t, 1)
 
     from config import RESUME_TEXT, TARGET_ROLES, MIN_SALARY
-    all_scored, qualified = process_jobs(
+    all_scored, qualified, stage_timings = process_jobs(
         deduped_jobs,
         resume_text=RESUME_TEXT,
         target_roles=TARGET_ROLES,
         min_salary=MIN_SALARY,
         scoring_backend=backend,
     )
-    upsert_jobs(all_scored, user_id=None)   # CLI: no user isolation
+    timings.update(stage_timings)
+
+    t = time.perf_counter()
+    upsert_jobs(all_scored, user_id=None)
+    timings["save_s"] = round(time.perf_counter() - t, 1)
+
+    timings["total_s"] = round(time.perf_counter() - t_total, 1)
+
+    # ── Timing summary ────────────────────────────────────────────
+    print("\n⏱️  Pipeline timing breakdown:")
+    labels = {
+        "scrape_s":          "Scraping (all sources)",
+        "enrich_prefetch_s": "LinkedIn pre-fetch",
+        "pass1_s":           "Pass 1 pre-filter",
+        "enrich_s":          "LinkedIn enrich (Pass 2)",
+        "pass2_s":           "Pass 2 scoring",
+        "cover_letters_s":   "Cover letters",
+        "save_s":            "Supabase save",
+        "total_s":           "TOTAL",
+    }
+    for key, label in labels.items():
+        if key in timings:
+            sep = "─" * 36 if key == "total_s" else " "
+            print(f"  {label:<28} {timings[key]:>6.1f}s")
+    print(f"  {'─'*36}")
+    print(f"  {'TOTAL':<28} {timings['total_s']:>6.1f}s")
+
+    log_experiment_run(
+        run_label=f"cli/{backend}",
+        scoring_mode=backend,
+        hybrid_threshold=6,
+        cover_letters_enabled=ENABLE_COVER_LETTERS,
+        jobs_scraped=len(jobs),
+        jobs_new=len(deduped_jobs),
+        jobs_qualified=len(qualified),
+        total_seconds=timings["total_s"],
+        timing_json=timings,
+    )
+
     print(f"\n🎯 Done. {len(qualified)} jobs scored 7+ queued for review.")
     print("   Run: python main.py review")
 
@@ -168,6 +217,8 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
   jobs_new              INTEGER DEFAULT 0,
   jobs_qualified        INTEGER DEFAULT 0,
   note                  TEXT DEFAULT '',
+  total_seconds         FLOAT,
+  timing_json           JSONB,
   created_at            TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

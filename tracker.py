@@ -158,6 +158,8 @@ def log_experiment_run(
     jobs_qualified: int,
     note: str = "",
     user_id: str | None = None,
+    total_seconds: float = 0.0,
+    timing_json: dict = None,
 ):
     """Persist one pipeline experiment run. Safe no-op if table is missing."""
     sb = get_client()
@@ -171,6 +173,8 @@ def log_experiment_run(
             "jobs_new": int(jobs_new),
             "jobs_qualified": int(jobs_qualified),
             "note": note or "",
+            "total_seconds": round(total_seconds, 1),
+            "timing_json": timing_json or {},
         }
         if user_id:
             row["user_id"] = user_id
