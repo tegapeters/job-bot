@@ -20,7 +20,7 @@ from tracker import (
     clear_queue, upsert_events, get_events, update_event_status, delete_past_events, delete_all_events,
     _scope_id,
 )
-from sessions import save_session, load_session, clear_session, new_uid, save_chat_history, load_chat_history, clear_chat_history
+from sessions import save_session, load_session, clear_session, new_uid, save_chat_history, load_chat_history, clear_chat_history, save_gmail_opt_in
 from auth import render_auth_wall, restore_user_session, get_user_id, get_user_email, sign_out
 from config import REVIEW_MIN_SCORE
 
@@ -1300,7 +1300,6 @@ if page == "Setup":
     if _gmail_toggle != _gmail_enabled:
         st.session_state["gmail_scan_enabled"] = _gmail_toggle
         if _USER_ID:
-            from sessions import save_gmail_opt_in
             save_gmail_opt_in(_USER_ID, _gmail_toggle)
 
     if _gmail_toggle:
