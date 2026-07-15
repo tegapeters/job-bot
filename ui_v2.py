@@ -416,6 +416,66 @@ st.markdown("""
 
   /* ── Hide Streamlit health status badge ── */
   [data-testid="stStatusWidget"] { display: none !important; }
+
+  /* ── Funnel row (Dashboard) ── */
+  .funnel-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: #131315;
+    border: 1px solid #1f1f22;
+    border-radius: 8px;
+    padding: 24px 28px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .funnel-step { text-align: center; flex: 1; min-width: 80px; }
+  .funnel-step .fn { font-family: 'Fraunces', serif; font-size: 32px; font-weight: 400; color: #F5F4EE; line-height: 1; }
+  .funnel-step .fn.accent { color: #D4FF3A; }
+  .funnel-step .fl { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #4A4A45; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 6px; }
+  .funnel-arrow { font-family: 'JetBrains Mono', monospace; font-size: 16px; color: #2e2e32; padding: 0 12px; flex-shrink: 0; }
+
+  /* ── Pre-flight checklist (Run Pipeline) ── */
+  .preflight {
+    background: #131315;
+    border: 1px solid #1f1f22;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .preflight .pf-row {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #8B8B85;
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .preflight .pf-row .ok  { color: #D4FF3A; }
+  .preflight .pf-row .warn { color: #ff6b6b; }
+
+  /* ── Step cards (Setup how-it-works) ── */
+  .step-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+  .step-card { background: #131315; border: 1px solid #1f1f22; border-radius: 8px; padding: 20px 20px 16px; }
+  .step-card .sn { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #D4FF3A; letter-spacing: 0.2em; margin-bottom: 10px; }
+  .step-card h5 { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 400; color: #F5F4EE; margin: 0 0 8px 0; }
+  .step-card p  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8B8B85; line-height: 1.7; margin: 0; }
+  @media (max-width: 768px) {
+    .step-cards { grid-template-columns: 1fr; }
+    .funnel-row { flex-direction: column; gap: 12px; }
+    .funnel-arrow { transform: rotate(90deg); }
+  }
+
+  /* ── Status bar (Applied / All Apps) ── */
+  .status-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .sb-chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 5px 14px;
+    border-radius: 3px;
+    letter-spacing: 0.08em;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -476,15 +536,23 @@ with st.sidebar:
     else:
         st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#ff6b6b;letter-spacing:0.15em;padding:0 20px 12px">⚠ NO RESUME — START HERE</div>', unsafe_allow_html=True)
 
-    _nav_pages = ["Setup", "Run Pipeline", "Review Queue", "Applied", "Interviews", "Events", "Dashboard", "All Applications", "Assistant"]
-    _forced_page = st.session_state.pop("_nav_page", None)
-    _nav_default = _nav_pages.index(_forced_page) if _forced_page in _nav_pages else 0
-    page = st.radio(
-        "Navigate",
-        _nav_pages,
-        index=_nav_default,
-        label_visibility="collapsed",
-    )
+    _nav_map = {
+        "⚙  Setup":              "Setup",
+        "▶  Run Pipeline":       "Run Pipeline",
+        "📋 Review Queue":       "Review Queue",
+        "✅ Applied":            "Applied",
+        "💼 Interviews":         "Interviews",
+        "🗓  Events":            "Events",
+        "📊 Dashboard":          "Dashboard",
+        "🗂  All Applications":  "All Applications",
+        "🤖 Assistant":          "Assistant",
+    }
+    _nav_labels   = list(_nav_map.keys())
+    _nav_internal = list(_nav_map.values())
+    _forced_page  = st.session_state.pop("_nav_page", None)
+    _nav_default  = _nav_internal.index(_forced_page) if _forced_page in _nav_internal else 0
+    _sel = st.radio("Navigate", _nav_labels, index=_nav_default, label_visibility="collapsed")
+    page = _nav_map[_sel]
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("Sign Out", use_container_width=True, key="sidebar_signout"):
@@ -1035,15 +1103,23 @@ BETA_JOB_LIMIT = 50  # max jobs scored per pipeline run for beta users
 if page == "Setup":
     page_header("Setup", "Start <em>here.</em>")
 
-    # ── How it works ─────────────────────────────────────────────
     st.markdown("""
-    <div class="pipeline-card" style="margin-bottom:24px">
-      <h4>How Job Pal works</h4>
-      <p>
-        1. Paste your resume below — Job Pal uses it to score every job 1–10 for fit.<br><br>
-        2. Go to <b>Run Pipeline</b> — it scrapes LinkedIn, Indeed, Remotive, and more, then our AI scores each job against your background and writes a custom cover letter for every match scoring 7+.<br><br>
-        3. Review your matches in <b>Review Queue</b>, move jobs through <b>Applied → Interviews</b>, and track everything on the <b>Dashboard</b>.
-      </p>
+    <div class="step-cards">
+      <div class="step-card">
+        <div class="sn">01 — Resume</div>
+        <h5>Tell it who you are</h5>
+        <p>Upload a PDF/DOCX or paste your resume. Job Pal reads every line to score job fit 1–10 against your actual background.</p>
+      </div>
+      <div class="step-card">
+        <div class="sn">02 — Pipeline</div>
+        <h5>Let AI do the hunting</h5>
+        <p>Scrapes LinkedIn, Remotive, RemoteOK & more in parallel. Claude scores every listing and writes a tailored cover letter for strong matches.</p>
+      </div>
+      <div class="step-card">
+        <div class="sn">03 — Review</div>
+        <h5>Apply to the best</h5>
+        <p>Your top matches land in Review Queue. Move them through Applied → Interviews. Track response rates and outcomes on the Dashboard.</p>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1333,60 +1409,106 @@ if page == "Setup":
                 st.warning("Enter both email and app password.")
 
 elif page == "Dashboard":
-    page_header("Job Pal · Techturi", "Your <em>pipeline.</em>")
+    page_header("Dashboard", "Your <em>pipeline.</em>")
 
     apps = safe_get_apps()
     if not apps:
-        st.info("No applications tracked yet. Run the pipeline to get started.")
+        st.markdown("""
+        <div class="pipeline-card" style="text-align:center;padding:48px 24px">
+          <h4>Nothing tracked yet</h4>
+          <p>Run the pipeline to start scoring jobs against your resume.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("▶ Run Pipeline", type="primary"):
+            st.session_state["_nav_page"] = "Run Pipeline"
+            st.rerun()
         st.stop()
 
     df = pd.DataFrame(apps)
     status_counts = df["status"].value_counts().to_dict()
+    n_queue    = status_counts.get("new", 0)
+    n_applied  = status_counts.get("applied", 0)
+    n_interview= status_counts.get("interview", 0)
+    n_rejected = status_counts.get("rejected", 0)
+    avg_score  = df["score"].dropna().mean()
+    response_rate = round(n_interview / n_applied * 100) if n_applied else 0
 
+    # ── Metrics row ───────────────────────────────────────────────
     col1, col2, col3, col4, col5 = st.columns(5)
     metric(col1, "Total Tracked",  len(df))
-    metric(col2, "Applied",        status_counts.get("applied", 0))
-    metric(col3, "Interviews",     status_counts.get("interview", 0), accent=True)
-    metric(col4, "In Queue",       status_counts.get("new", 0), "awaiting review")
-    avg = df['score'].dropna().mean()
-    metric(col5, "Avg AI Score",   f"{avg:.1f}" if not df['score'].dropna().empty else "—", "out of 10")
+    metric(col2, "In Queue",       n_queue,     "awaiting review")
+    metric(col3, "Applied",        n_applied)
+    metric(col4, "Interviews",     n_interview, "active", accent=True)
+    metric(col5, "Avg AI Score",   f"{avg_score:.1f}" if not df["score"].dropna().empty else "—", "out of 10")
 
-    st.markdown('<div class="section-label" style="margin-top:28px">Analytics</div>', unsafe_allow_html=True)
+    # ── Funnel ────────────────────────────────────────────────────
+    n_qualified = len(df[df["score"].fillna(0) >= REVIEW_MIN_SCORE])
+    st.markdown(f"""
+    <div class="funnel-row">
+      <div class="funnel-step">
+        <div class="fn">{len(df)}</div>
+        <div class="fl">Scraped</div>
+      </div>
+      <div class="funnel-arrow">→</div>
+      <div class="funnel-step">
+        <div class="fn accent">{n_qualified}</div>
+        <div class="fl">Scored {REVIEW_MIN_SCORE}+</div>
+      </div>
+      <div class="funnel-arrow">→</div>
+      <div class="funnel-step">
+        <div class="fn">{n_applied}</div>
+        <div class="fl">Applied</div>
+      </div>
+      <div class="funnel-arrow">→</div>
+      <div class="funnel-step">
+        <div class="fn {'accent' if n_interview else ''}">{n_interview}</div>
+        <div class="fl">Interviews</div>
+      </div>
+      <div class="funnel-arrow">→</div>
+      <div class="funnel-step">
+        <div class="fn {'accent' if response_rate >= 20 else ''}">{response_rate}%</div>
+        <div class="fl">Response Rate</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
+    # ── Analytics row ─────────────────────────────────────────────
+    st.markdown('<div class="section-label">Analytics</div>', unsafe_allow_html=True)
     col_a, col_b = st.columns(2)
     with col_a:
-        st.markdown("**Score Distribution**")
+        st.caption("Score distribution")
         score_df = df["score"].dropna().value_counts().sort_index()
         if not score_df.empty:
             st.bar_chart(score_df, color="#D4FF3A")
-
     with col_b:
-        st.markdown("**Status Breakdown**")
-        if status_counts:
-            st.bar_chart(pd.Series(status_counts), color="#D4FF3A")
+        st.caption("Status breakdown")
+        nice_status = {k: v for k, v in status_counts.items() if v > 0}
+        if nice_status:
+            st.bar_chart(pd.Series(nice_status), color="#D4FF3A")
 
     event_counts = get_event_counts(user_id=_USER_ID)
     if event_counts:
-        st.markdown('<div class="section-label" style="margin-top:28px">Outcome Signals</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label" style="margin-top:8px">Outcome signals</div>', unsafe_allow_html=True)
         st.bar_chart(pd.Series(event_counts), color="#D4FF3A")
 
-    st.markdown('<div class="section-label" style="margin-top:28px">Source health</div>', unsafe_allow_html=True)
-    st.caption("Per job board: volume, average score, share scoring 7+, and how many are waiting in Review Queue.")
+    # ── Source health ─────────────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:8px">Source health</div>', unsafe_allow_html=True)
+    st.caption("Volume, avg score, share scoring 7+, and how many are waiting in Review Queue — per job board.")
     health_df = pd.DataFrame(get_source_health(apps=apps, review_min_score=REVIEW_MIN_SCORE, user_id=_USER_ID))
     if not health_df.empty:
         st.dataframe(health_df, use_container_width=True, hide_index=True)
-    else:
-        st.info("No source breakdown yet.")
 
-    st.markdown('<div class="section-label" style="margin-top:28px">Top 10 by Score</div>', unsafe_allow_html=True)
-    top = df.nlargest(10, "score")[["title", "company", "location", "score", "score_reason", "status"]]
+    # ── Top matches ───────────────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:8px">Top matches</div>', unsafe_allow_html=True)
+    top_cols = ["title", "company", "location", "score", "score_reason", "status"]
+    top = df.nlargest(10, "score")[[c for c in top_cols if c in df.columns]]
     st.dataframe(top, use_container_width=True, hide_index=True)
 
-    st.markdown("---")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Need help interpreting your pipeline?</div>', unsafe_allow_html=True)
-    if st.button("💬 Ask Job Pal", key="cta_asst_dashboard", type="secondary"):
-        st.session_state["_nav_page"] = "Assistant"
-        st.rerun()
+    _da, _db = st.columns([1, 4])
+    with _da:
+        if st.button("💬 Ask Job Pal", key="cta_asst_dashboard", type="secondary"):
+            st.session_state["_nav_page"] = "Assistant"
+            st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1396,7 +1518,7 @@ elif page == "Review Queue":
     page_header("Review Queue", "Jobs worth <em>applying to.</em>")
     rq_col_info, rq_col_thresh = st.columns([3, 1])
     with rq_col_info:
-        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Status updates save instantly</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:20px">AI-scored matches waiting for your review · status updates save instantly</div>', unsafe_allow_html=True)
     with rq_col_thresh:
         queue_min_score = st.selectbox(
             "Min score",
@@ -1409,7 +1531,17 @@ elif page == "Review Queue":
 
     queue = safe_get_queue(min_score=queue_min_score)
     if not queue:
-        st.success("Queue is empty — nothing to review.")
+        st.markdown("""
+        <div class="pipeline-card" style="text-align:center;padding:40px 24px">
+          <h4>Queue is empty</h4>
+          <p>All caught up. Run the pipeline to pull in new matches, or lower the min score filter above.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        _qa, _qb = st.columns([1, 4])
+        with _qa:
+            if st.button("▶ Run Pipeline", type="primary"):
+                st.session_state["_nav_page"] = "Run Pipeline"
+                st.rerun()
         st.stop()
 
     # ── Queue filters ─────────────────────────────────────────────
@@ -1517,13 +1649,27 @@ elif page == "Review Queue":
 # ═══════════════════════════════════════════════════════════════════
 elif page == "Applied":
     page_header("Applied", "In their <em>inbox.</em>")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Jobs you\'ve submitted — cover letters, details, and next-step controls</div>', unsafe_allow_html=True)
 
     apps = safe_get_apps()
-    applied = [a for a in apps if a.get("status") == "applied"]
+    applied   = [a for a in apps if a.get("status") == "applied"]
+    interviews= [a for a in apps if a.get("status") == "interview"]
+    rejected  = [a for a in apps if a.get("status") == "rejected"]
+    _total_heard = len(interviews) + len(rejected)
+    _resp_rate   = round(_total_heard / len(applied) * 100) if applied else 0
+
+    _ac1, _ac2, _ac3, _ac4 = st.columns(4)
+    metric(_ac1, "Applied",       len(applied))
+    metric(_ac2, "Heard Back",    _total_heard, f"{_resp_rate}% response rate")
+    metric(_ac3, "Interviews",    len(interviews), accent=bool(interviews))
+    metric(_ac4, "Rejected",      len(rejected))
 
     if not applied:
-        st.info("No applications marked 'applied' yet. Move jobs here from the Review Queue.")
+        st.markdown("""
+        <div class="pipeline-card" style="text-align:center;padding:40px 24px;margin-top:24px">
+          <h4>No applications yet</h4>
+          <p>Move jobs from Review Queue to Applied once you've submitted them.</p>
+        </div>
+        """, unsafe_allow_html=True)
         st.stop()
 
     # ── Gmail rejection scan ──────────────────────────────────────────
@@ -1601,16 +1747,37 @@ elif page == "Applied":
 # ═══════════════════════════════════════════════════════════════════
 elif page == "Interviews":
     page_header("Interviews", "You're in the <em>room.</em>")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:24px">Active interview pipeline — review your cover letter, prep, and track outcomes</div>', unsafe_allow_html=True)
 
     apps = safe_get_apps()
     interviews = [a for a in apps if a.get("status") == "interview"]
 
     if not interviews:
-        st.info("No active interviews. Move jobs here from Applied when you land a screen or interview.")
+        st.markdown("""
+        <div class="pipeline-card" style="text-align:center;padding:40px 24px">
+          <h4>No active interviews</h4>
+          <p>When you land a phone screen or interview, move it here from Applied to track prep and outcomes.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        _ia, _ib = st.columns([1,4])
+        with _ia:
+            if st.button("✅ Go to Applied", type="secondary"):
+                st.session_state["_nav_page"] = "Applied"
+                st.rerun()
         st.stop()
 
-    st.markdown(f'<div class="section-label">{len(interviews)} active interview{"s" if len(interviews) != 1 else ""}</div>', unsafe_allow_html=True)
+    _iv1, _iv2, _iv3 = st.columns(3)
+    metric(_iv1, "Active",    len(interviews))
+    metric(_iv2, "Avg Score", f"{sum((j.get('score') or 0) for j in interviews)/len(interviews):.1f}", "ai score", accent=True)
+    _days_list = [_days_in_queue(j) for j in interviews if _days_in_queue(j) is not None]
+    metric(_iv3, "Avg Days",  f"{round(sum(_days_list)/len(_days_list))}" if _days_list else "—", "in pipeline")
+
+    st.markdown(f'<div class="section-label" style="margin-top:24px">{len(interviews)} active interview{"s" if len(interviews) != 1 else ""}</div>', unsafe_allow_html=True)
+
+    _prep_a, _prep_b = st.columns([4, 1])
+    with _prep_b:
+        if st.button("🤖 Prep with AI", type="secondary", use_container_width=True):
+            st.session_state["_nav_page"] = "Assistant"
+            st.rerun()
 
     for job in sorted(interviews, key=lambda x: x.get("score") or 0, reverse=True):
         job_card(job, "iv", ["rejected", "skipped", "application_closed"], expanded=True)
@@ -1624,10 +1791,32 @@ elif page == "All Applications":
 
     apps = safe_get_apps()
     if not apps:
-        st.info("No applications tracked yet.")
+        st.markdown("""
+        <div class="pipeline-card" style="text-align:center;padding:40px 24px">
+          <h4>No history yet</h4>
+          <p>Run the pipeline to start tracking jobs.</p>
+        </div>
+        """, unsafe_allow_html=True)
         st.stop()
 
     df = pd.DataFrame(apps)
+
+    # ── Status summary bar ────────────────────────────────────────
+    _sc = df["status"].value_counts().to_dict()
+    _chip_styles = {
+        "new":                "background:#1a1f0a;color:#D4FF3A;border:1px solid #2a3510",
+        "applied":            "background:#0a1a1f;color:#3ad4ff;border:1px solid #102a35",
+        "interview":          "background:#1a0f1a;color:#d43aff;border:1px solid #2a1035",
+        "rejected":           "background:#1f0a0a;color:#ff3a3a;border:1px solid #350f0f",
+        "skipped":            "background:#1a1a1a;color:#666;border:1px solid #333",
+        "application_closed": "background:#1a1208;color:#ff9a3a;border:1px solid #352010",
+    }
+    _chips = " ".join(
+        f'<span class="sb-chip" style="{_chip_styles.get(s, "background:#1a1a1a;color:#888")}">'
+        f'{s.replace("application_closed","closed")} · {n}</span>'
+        for s, n in sorted(_sc.items(), key=lambda x: -x[1])
+    )
+    st.markdown(f'<div class="status-bar">{_chips}</div>', unsafe_allow_html=True)
 
     df["category"] = df["title"].apply(_categorize)
     categories = sorted(df["category"].unique().tolist())
@@ -1908,176 +2097,174 @@ elif page == "Events":
 
 
 elif page == "Run Pipeline":
-    page_header("Pipeline", "Scrape. Score. <em>Apply.</em>")
+    page_header("Run Pipeline", "Scrape. Score. <em>Apply.</em>")
 
     # ── Resume gate ──────────────────────────────────────────────
     resume_text = st.session_state.get("resume_text")
     if not resume_text:
-        st.warning("No resume loaded. Go to **Setup** and paste your resume first — the pipeline uses it to score job fit.")
+        st.markdown("""
+        <div class="pipeline-card" style="text-align:center;padding:40px 24px">
+          <h4>No resume loaded</h4>
+          <p>Go to Setup and paste or upload your resume first — the pipeline uses it to score every job for fit.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("⚙ Go to Setup", type="primary"):
+            st.session_state["_nav_page"] = "Setup"
+            st.rerun()
         st.stop()
 
-    min_salary = st.session_state.get("min_salary", 0)
-    salary_label = f"${min_salary:,}+" if min_salary else "no minimum"
-    st.markdown(f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#4A4A45;margin-bottom:20px">Beta limit: {BETA_JOB_LIMIT} jobs per run · Resume loaded ✓ · Salary filter: {salary_label}</div>', unsafe_allow_html=True)
+    # ── Pre-flight checklist ──────────────────────────────────────
+    _roles   = st.session_state.get("target_roles") or []
+    _salary  = st.session_state.get("min_salary", 0)
+    _resume_kb = round(len(resume_text) / 1024, 1)
+    _salary_label = f"${_salary:,}+" if _salary else "No minimum set"
+    _roles_label  = ", ".join(_roles[:3]) + ("…" if len(_roles) > 3 else "") if _roles else None
 
-    col1, col2 = st.columns(2)
+    st.markdown(f"""
+    <div class="preflight">
+      <div class="pf-row"><span class="ok">✓</span> Resume loaded &nbsp;<span style="color:#4A4A45">({_resume_kb} KB)</span></div>
+      <div class="pf-row">
+        {'<span class="ok">✓</span>' if _roles else '<span class="warn">✗</span>'}
+        {'Target roles: <span style="color:#F5F4EE">' + _roles_label + '</span>' if _roles else 'No target roles set — go to Setup before running'}
+      </div>
+      <div class="pf-row"><span class="ok">✓</span> Salary floor: <span style="color:#F5F4EE">{_salary_label}</span></div>
+      <div class="pf-row"><span class="ok">✓</span> Sources: LinkedIn · RemoteOK · Remotive · We Work Remotely · Jobicy</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    with col1:
-        st.markdown('<div class="pipeline-card"><h4>Full Pipeline</h4><p>Scrape all sources → AI scores every job for fit → generates a custom cover letter for every match scoring 7+</p></div>', unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        run_label = st.text_input(
-            "Run label",
-            value="",
-            placeholder="e.g. cheap-baseline-may06",
-            help="Optional name to compare this run with others.",
-        )
-        run_note = st.text_area(
-            "Run note",
-            value="",
-            height=80,
-            placeholder="Optional notes (query changes, expectations, observations).",
-        )
+    # ── Main controls ─────────────────────────────────────────────
+    _mc1, _mc2 = st.columns([2, 1])
+    with _mc1:
         scoring_mode = st.selectbox(
             "Scoring mode",
             ["embed", "hybrid", "claude", "cheap"],
             index=0,
-            help="embed = TF-IDF similarity + Claude for uncertain band (recommended) · hybrid = keyword pre-filter + Claude · claude = Claude for everything · cheap = no LLM",
+            help="embed = TF-IDF + Claude for uncertain band (recommended) · hybrid = keyword pre-filter + Claude · claude = Claude scores everything · cheap = no LLM",
         )
-        _mode_info = {
-            "embed":  "🟢 TF-IDF scorer → `claude-sonnet-4-6` for uncertain band only. Cheapest. Recommended.",
-            "hybrid": "🟡 Keyword pre-filter → `claude-sonnet-4-6` for jobs above threshold.",
-            "claude": "🔵 `claude-sonnet-4-6` scores every job. Most accurate, most expensive.",
-            "cheap":  "⚪ Keyword heuristic only — no LLM, no API cost.",
-        }
-        st.caption(_mode_info.get(scoring_mode, ""))
-        hybrid_min = st.slider(
-            "Hybrid Claude threshold",
-            min_value=1,
-            max_value=10,
-            value=6,
-            disabled=(scoring_mode != "hybrid"),
-            help="In hybrid mode, jobs at or above this cheap-score are escalated to Claude.",
-        )
+    with _mc2:
         enable_letters = st.checkbox(
             "Generate cover letters",
             value=(scoring_mode != "cheap"),
-            help="Turn off to avoid extra model calls during testing.",
+            help="Writes a tailored cover letter for every job scoring 8+",
         )
-        if st.button("▶ Run Full Pipeline", type="primary", use_container_width=True):
-            _pipeline_roles = st.session_state.get("target_roles") or []
-            if not _pipeline_roles:
-                st.error("No target roles set — go to **Setup** and add the roles you're looking for before running.")
-                st.stop()
 
-            with st.spinner("Scraping jobs..."):
-                from scrapers import scrape_all
-                jobs = scrape_all(
-                    target_roles=_pipeline_roles,
-                    min_salary=st.session_state.get("min_salary", 0),
-                )
+    _mode_info = {
+        "embed":  "🟢 TF-IDF similarity + `claude-sonnet-4-6` for borderline scores. Cheapest. Recommended.",
+        "hybrid": "🟡 Keyword pre-filter, then Claude for anything above the threshold.",
+        "claude": "🔵 Claude scores every job — most accurate, most API cost.",
+        "cheap":  "⚪ Keyword heuristic only. No LLM, no API calls.",
+    }
+    st.caption(_mode_info.get(scoring_mode, ""))
 
-            st.info(f"Scraped {len(jobs)} jobs total")
+    # ── Advanced options ──────────────────────────────────────────
+    with st.expander("⚙ Advanced options"):
+        _adv1, _adv2 = st.columns(2)
+        with _adv1:
+            run_label = st.text_input("Run label", value="", placeholder="e.g. embed-jul15")
+            hybrid_min = st.slider("Hybrid Claude threshold", 1, 10, 6, disabled=(scoring_mode != "hybrid"),
+                                   help="Jobs at or above this cheap-score are escalated to Claude.")
+        with _adv2:
+            run_note = st.text_area("Run note", value="", height=100,
+                                    placeholder="Notes on this run (query changes, observations).")
 
-            from tracker import get_seen_ids
-            seen = get_seen_ids(user_id=_USER_ID)
-            new_jobs = [j for j in jobs if _scope_id(j["id"], _USER_ID) not in seen]
+    if st.button("▶ Run Pipeline", type="primary", use_container_width=True):
+        _pipeline_roles = st.session_state.get("target_roles") or []
+        if not _pipeline_roles:
+            st.error("No target roles set — go to **Setup** and add the roles you're looking for before running.")
+            st.stop()
 
-            # Collapse same title+company posted under multiple URLs (keeps longest description)
-            _seen_tc: dict[tuple, dict] = {}
+        with st.spinner("Scraping jobs from 5 sources in parallel…"):
+            from scrapers import scrape_all
+            jobs = scrape_all(
+                target_roles=_pipeline_roles,
+                min_salary=st.session_state.get("min_salary", 0),
+            )
+
+        st.info(f"Scraped {len(jobs)} jobs total")
+
+        from tracker import get_seen_ids
+        seen = get_seen_ids(user_id=_USER_ID)
+        new_jobs = [j for j in jobs if _scope_id(j["id"], _USER_ID) not in seen]
+
+        _seen_tc: dict[tuple, dict] = {}
+        for j in new_jobs:
+            key = (j.get("title", "").strip().lower(), j.get("company", "").strip().lower())
+            existing = _seen_tc.get(key)
+            if existing is None or len(j.get("description") or "") > len(existing.get("description") or ""):
+                _seen_tc[key] = j
+        new_jobs = list(_seen_tc.values())
+
+        if len(new_jobs) > BETA_JOB_LIMIT:
+            st.info(f"Beta limit: pre-ranking {len(new_jobs)} new jobs, keeping top {BETA_JOB_LIMIT}…")
+            from agent import score_job_cheap
+            _resume = st.session_state.get("resume_text") or ""
+            _roles  = st.session_state.get("target_roles")
+            _sal    = st.session_state.get("min_salary", 0)
             for j in new_jobs:
-                key = (j.get("title", "").strip().lower(), j.get("company", "").strip().lower())
-                existing = _seen_tc.get(key)
-                if existing is None or len(j.get("description") or "") > len(existing.get("description") or ""):
-                    _seen_tc[key] = j
-            new_jobs = list(_seen_tc.values())
+                score_job_cheap(j, resume_text=_resume, target_roles=_roles, min_salary=_sal)
+            new_jobs = sorted(new_jobs, key=lambda j: j.get("score") or 0, reverse=True)[:BETA_JOB_LIMIT]
+            for j in new_jobs:
+                j["score"] = None
+        else:
+            st.info(f"{len(new_jobs)} new (unseen) jobs to score")
 
-            # Beta cap: sort by cheap score first so the best 50 are selected
-            if len(new_jobs) > BETA_JOB_LIMIT:
-                st.info(f"Beta limit: pre-ranking {len(new_jobs)} new jobs, keeping top {BETA_JOB_LIMIT}...")
-                from agent import score_job_cheap
-                _resume = st.session_state.get("resume_text") or ""
-                _roles  = st.session_state.get("target_roles")
-                _sal    = st.session_state.get("min_salary", 0)
-                for j in new_jobs:
-                    score_job_cheap(j, resume_text=_resume, target_roles=_roles, min_salary=_sal)
-                new_jobs = sorted(new_jobs, key=lambda j: j.get("score") or 0, reverse=True)[:BETA_JOB_LIMIT]
-                # Reset scores so Pass 2 re-scores cleanly
-                for j in new_jobs:
-                    j["score"] = None
-            else:
-                st.info(f"{len(new_jobs)} new (unseen) jobs to score")
+        li_empty = [j for j in new_jobs if "linkedin.com" in (j.get("url") or "") and not j.get("description")]
+        if li_empty:
+            with st.spinner(f"Fetching full descriptions for {len(li_empty)} LinkedIn jobs…"):
+                from fetcher import enrich_jobs
+                new_jobs = enrich_jobs(new_jobs)
 
-            # Enrich LinkedIn jobs with full descriptions before scoring
-            li_empty = [j for j in new_jobs if "linkedin.com" in (j.get("url") or "") and not j.get("description")]
-            if li_empty:
-                with st.spinner(f"Fetching descriptions for {len(li_empty)} LinkedIn jobs..."):
-                    from fetcher import enrich_jobs
-                    new_jobs = enrich_jobs(new_jobs)
+        if not new_jobs:
+            st.success("Queue is up to date — no new jobs to score.")
+        else:
+            progress = st.progress(0, text="Starting AI scoring…")
+            progress.progress(10, text=f"Scoring {len(new_jobs)} jobs against your resume…")
+            from agent import process_jobs
+            all_scored, qualified, stage_timings = process_jobs(
+                new_jobs,
+                verbose=False,
+                resume_text=resume_text,
+                scoring_backend=scoring_mode,
+                enable_cover_letters=enable_letters,
+                hybrid_claude_min_score=hybrid_min,
+                min_salary=st.session_state.get("min_salary", 0),
+                target_roles=st.session_state.get("target_roles") or [],
+            )
 
-            if not new_jobs:
-                st.success("Nothing new to score. Queue is up to date.")
-            else:
-                st.info(f"Scoring {len(new_jobs)} jobs — this takes 1–3 minutes. Don't close the tab.")
-                progress = st.progress(0, text="Starting AI scoring...")
+            progress.progress(80, text=f"Saving {len(qualified)} qualified jobs…")
+            from tracker import upsert_jobs
+            import time as _time
+            _t_save = _time.perf_counter()
+            upsert_jobs(all_scored, user_id=_USER_ID)
+            stage_timings["save_s"] = round(_time.perf_counter() - _t_save, 1)
+            total_s = sum(v for v in stage_timings.values())
+            stage_timings["total_s"] = round(total_s, 1)
 
-                progress.progress(10, text=f"Analyzing {len(new_jobs)} jobs against your resume...")
-                from agent import process_jobs
-                all_scored, qualified, stage_timings = process_jobs(
-                    new_jobs,
-                    verbose=False,
-                    resume_text=resume_text,
-                    scoring_backend=scoring_mode,
-                    enable_cover_letters=enable_letters,
-                    hybrid_claude_min_score=hybrid_min,
-                    min_salary=st.session_state.get("min_salary", 0),
-                    target_roles=st.session_state.get("target_roles") or [],
-                )
+            log_experiment_run(
+                run_label=run_label.strip(),
+                scoring_mode=scoring_mode,
+                hybrid_threshold=hybrid_min,
+                cover_letters_enabled=enable_letters,
+                jobs_scraped=len(jobs),
+                jobs_new=len(new_jobs),
+                jobs_qualified=len(qualified),
+                note=run_note.strip(),
+                user_id=_USER_ID,
+                total_seconds=stage_timings["total_s"],
+                timing_json=stage_timings,
+            )
 
-                progress.progress(80, text=f"Writing cover letters for {len(qualified)} qualified jobs...")
-                from tracker import upsert_jobs
-                import time as _time
-                _t_save = _time.perf_counter()
-                upsert_jobs(all_scored, user_id=_USER_ID)
-                stage_timings["save_s"] = round(_time.perf_counter() - _t_save, 1)
-                total_s = sum(v for v in stage_timings.values())
-                stage_timings["total_s"] = round(total_s, 1)
+            progress.progress(100, text="Done.")
+            _timing_str = f"⏱ {stage_timings['total_s']:.0f}s  (score {stage_timings.get('pass2_s',0):.0f}s · enrich {stage_timings.get('enrich_s',0):.0f}s)"
+            st.success(f"✓ Pipeline complete — **{len(qualified)} jobs scored {REVIEW_MIN_SCORE}+** · {_timing_str}")
 
-                log_experiment_run(
-                    run_label=run_label.strip(),
-                    scoring_mode=scoring_mode,
-                    hybrid_threshold=hybrid_min,
-                    cover_letters_enabled=enable_letters,
-                    jobs_scraped=len(jobs),
-                    jobs_new=len(new_jobs),
-                    jobs_qualified=len(qualified),
-                    note=run_note.strip(),
-                    user_id=_USER_ID,
-                    total_seconds=stage_timings["total_s"],
-                    timing_json=stage_timings,
-                )
-
-                progress.progress(100, text="Done.")
-                _timing_str = f" | ⏱ {stage_timings['total_s']:.0f}s total (score {stage_timings.get('pass2_s',0):.0f}s · enrich {stage_timings.get('enrich_s',0):.0f}s)"
-                st.success(f"✓ Pipeline complete — {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+{_timing_str}")
-
-                if qualified:
-                    st.markdown('<div class="section-label" style="margin-top:20px">Qualified Jobs</div>', unsafe_allow_html=True)
-                    q_df = pd.DataFrame(qualified).reindex(columns=["title", "company", "score", "scored_by", "score_reason", "seniority"])
-                    st.dataframe(q_df, use_container_width=True, hide_index=True)
-
-    with col2:
-        st.markdown('<div class="pipeline-card"><h4>Scrape Only</h4><p>Fetch raw job listings from all sources without scoring — no API calls, no cost</p></div>', unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("▶ Scrape Only", use_container_width=True):
-            with st.spinner("Scraping..."):
-                from scrapers import scrape_all
-                jobs = scrape_all(
-                    target_roles=st.session_state.get("target_roles") or None,
-                    min_salary=st.session_state.get("min_salary", 0),
-                )
-            st.success(f"Scraped {len(jobs)} jobs")
-            preview = pd.DataFrame(jobs[:20])[["title", "company", "location", "source"]]
-            st.dataframe(preview, use_container_width=True, hide_index=True)
+            if qualified:
+                st.markdown('<div class="section-label" style="margin-top:20px">New qualified jobs</div>', unsafe_allow_html=True)
+                q_df = pd.DataFrame(qualified).reindex(columns=["title", "company", "score", "scored_by", "score_reason", "seniority"])
+                st.dataframe(q_df, use_container_width=True, hide_index=True)
+                if st.button("📋 Go to Review Queue", type="primary"):
+                    st.session_state["_nav_page"] = "Review Queue"
+                    st.rerun()
 
     # ── Scraper health ───────────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:36px">Scraper Health</div>', unsafe_allow_html=True)
