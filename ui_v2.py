@@ -701,11 +701,11 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 f'<div class="cover-letter">{job["cover_letter"]}</div>',
                 unsafe_allow_html=True,
             )
-            st.markdown('<div class="section-label" style="margin-top:8px">📋 Copy-ready</div>', unsafe_allow_html=True)
-            _cl_clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', job["cover_letter"])
-            _cl_clean = re.sub(r'\*([^*]+)\*', r'\1', _cl_clean)
-            _cl_clean = re.sub(r'\n{3,}', '\n\n', _cl_clean).strip()
-            st.code(_cl_clean, language=None)
+            if st.toggle("📋 Copy-ready (plain text)", key=f"cl_copy_{job['id']}", value=False):
+                _cl_clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', job["cover_letter"])
+                _cl_clean = re.sub(r'\*([^*]+)\*', r'\1', _cl_clean)
+                _cl_clean = re.sub(r'\n{3,}', '\n\n', _cl_clean).strip()
+                st.code(_cl_clean, language=None)
 
         # ── Questionnaire Helper (conversational) ─────────────────
         st.markdown('<div class="section-label" style="margin-top:16px">Questionnaire Helper</div>', unsafe_allow_html=True)
@@ -800,13 +800,12 @@ Instructions:
                         None,
                     )
                     if _last_answer:
-                        st.markdown('<div class="section-label" style="margin-top:12px">📋 Copy-ready answers</div>', unsafe_allow_html=True)
-                        # Strip markdown so pasting into forms is clean
-                        _clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', _last_answer)
-                        _clean = re.sub(r'\*([^*]+)\*', r'\1', _clean)
-                        _clean = re.sub(r'^#{1,6}\s+', '', _clean, flags=re.MULTILINE)
-                        _clean = re.sub(r'\n{3,}', '\n\n', _clean).strip()
-                        st.code(_clean, language=None)
+                        if st.toggle("📋 Copy-ready answers (plain text)", key=f"q_copy_{job['id']}", value=False):
+                            _clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', _last_answer)
+                            _clean = re.sub(r'\*([^*]+)\*', r'\1', _clean)
+                            _clean = re.sub(r'^#{1,6}\s+', '', _clean, flags=re.MULTILINE)
+                            _clean = re.sub(r'\n{3,}', '\n\n', _clean).strip()
+                            st.code(_clean, language=None)
 
                     with st.form(key=f"q_followup_form_{job['id']}", clear_on_submit=True):
                         q_followup = st.text_input(
