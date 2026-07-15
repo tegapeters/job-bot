@@ -47,3 +47,34 @@ def clear_session(uid: str):
 
 def new_uid() -> str:
     return uuid.uuid4().hex[:16]
+
+
+def save_chat_history(user_id: str, messages: list[dict]) -> None:
+    """Upsert assistant chat history for a user."""
+    sb = get_client()
+    sb.table("assistant_chats").upsert({
+        "user_id": user_id,
+        "messages": messages,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, on_conflict="user_id").execute()
+
+
+def load_chat_history(user_id: str) -> list[dict]:
+    """Return saved chat messages for a user, or empty list."""
+    sb = get_client()
+    try:
+        result = sb.table("assistant_chats").select("messages").eq("user_id", user_id).execute()
+        if result.data:
+            return result.data[0].get("messages") or []
+    except Exception:
+        pass
+    return []
+
+
+def clear_chat_history(user_id: str) -> None:
+    """Delete saved chat history for a user."""
+    sb = get_client()
+    try:
+        sb.table("assistant_chats").delete().eq("user_id", user_id).execute()
+    except Exception:
+        pass

@@ -20,7 +20,7 @@ from tracker import (
     clear_queue, upsert_events, get_events, update_event_status, delete_past_events, delete_all_events,
     _scope_id,
 )
-from sessions import save_session, load_session, clear_session, new_uid
+from sessions import save_session, load_session, clear_session, new_uid, save_chat_history, load_chat_history, clear_chat_history
 from auth import render_auth_wall, restore_user_session, get_user_id, get_user_email, sign_out
 from config import REVIEW_MIN_SCORE
 
@@ -474,9 +474,13 @@ with st.sidebar:
     else:
         st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#ff6b6b;letter-spacing:0.15em;padding:0 20px 12px">⚠ NO RESUME — START HERE</div>', unsafe_allow_html=True)
 
+    _nav_pages = ["Setup", "Run Pipeline", "Review Queue", "Applied", "Interviews", "Events", "Dashboard", "All Applications", "Assistant"]
+    _forced_page = st.session_state.pop("_nav_page", None)
+    _nav_default = _nav_pages.index(_forced_page) if _forced_page in _nav_pages else 0
     page = st.radio(
         "Navigate",
-        ["Setup", "Run Pipeline", "Review Queue", "Applied", "Interviews", "Events", "Dashboard", "All Applications", "Assistant"],
+        _nav_pages,
+        index=_nav_default,
         label_visibility="collapsed",
     )
 
@@ -657,57 +661,86 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 unsafe_allow_html=True,
             )
 
-        # ── Questionnaire Helper ──────────────────────────────────
+        # ── Questionnaire Helper (conversational) ─────────────────
         st.markdown('<div class="section-label" style="margin-top:16px">Questionnaire Helper</div>', unsafe_allow_html=True)
         with st.expander("📋 Draft answers to application questions", expanded=False):
-            q_key   = f"q_input_{job['id']}"
-            ans_key = f"q_ans_{job['id']}"
-            questions = st.text_area(
-                "Paste the application questions",
-                key=q_key,
-                placeholder="1. Why do you want to work at this company?\n2. Describe a time you used data to drive a decision.\n3. ...",
-                height=140,
-            )
-            if st.button("✍️ Draft answers", key=f"q_submit_{job['id']}", type="secondary"):
-                resume_text = st.session_state.get("resume_text") or ""
-                if not questions.strip():
-                    st.warning("Paste some questions first.")
-                elif not resume_text:
-                    st.warning("No resume loaded — go to Setup first.")
-                else:
-                    system = f"""You are a job application assistant helping the user draft honest, specific answers to application questionnaire questions.
+            q_chat_key = f"q_chat_{job['id']}"
+            if q_chat_key not in st.session_state:
+                st.session_state[q_chat_key] = []
+
+            q_history = st.session_state[q_chat_key]
+            resume_text = st.session_state.get("resume_text") or ""
+
+            if not resume_text:
+                st.warning("No resume loaded — go to Setup first.")
+            else:
+                q_system = [{"type": "text", "text": f"""You are a job application assistant helping the user draft honest, specific answers to application questionnaire questions.
 
 JOB: {job.get('title')} at {job.get('company')}
 LOCATION: {job.get('location', 'Not specified')}
 WHY IT SCORED WELL: {job.get('score_reason', '')}
 
 JOB DESCRIPTION:
-{(job.get('description') or '')[:3000]}
+{job.get('description') or ''}
 
-USER RESUME:
-{resume_text[:2500]}
+USER RESUME (full):
+{resume_text}
 
-{('COVER LETTER (use for tone/framing reference):\n' + job['cover_letter'][:800]) if job.get('cover_letter') else ''}
+{('COVER LETTER (use for tone/framing reference):\\n' + job['cover_letter']) if job.get('cover_letter') else ''}
 
 Instructions:
 - Answer each question using specific, honest examples drawn from the resume
 - Keep each answer 2-4 sentences unless the question clearly needs more
 - Format: restate the question briefly, then answer it
-- Do not invent experience not in the resume"""
+- Do not invent experience not in the resume
+- You can refine answers on follow-up requests (e.g., "make answer 2 shorter", "add an Oracle example")""", "cache_control": {"type": "ephemeral"}}]
 
+                if not q_history:
+                    questions_init = st.text_area(
+                        "Paste the application questions",
+                        key=f"q_init_{job['id']}",
+                        placeholder="1. Why do you want to work at this company?\n2. Describe a time you used data to drive a decision.\n3. ...",
+                        height=120,
+                    )
+                    if st.button("✍️ Draft answers", key=f"q_start_{job['id']}", type="secondary"):
+                        if not questions_init.strip():
+                            st.warning("Paste some questions first.")
+                        else:
+                            st.session_state[q_chat_key].append({"role": "user", "content": f"Draft answers to these application questions:\n\n{questions_init.strip()}"})
+                            st.rerun()
+                else:
                     import anthropic as _anthropic
                     _ac = _anthropic.Anthropic()
-                    with _ac.messages.stream(
-                        model="claude-sonnet-4-6",
-                        max_tokens=1500,
-                        system=system,
-                        messages=[{"role": "user", "content": f"Draft answers to these questions:\n\n{questions}"}],
-                    ) as stream:
-                        response = st.write_stream(stream.text_stream)
-                    st.session_state[ans_key] = response
 
-            if st.session_state.get(ans_key) and not questions.strip():
-                st.markdown(st.session_state[ans_key])
+                    for msg in q_history:
+                        avatar = "👤" if msg["role"] == "user" else "🤖"
+                        with st.chat_message(msg["role"], avatar=avatar):
+                            st.markdown(msg["content"])
+
+                    if q_history and q_history[-1]["role"] == "user":
+                        with st.chat_message("assistant", avatar="🤖"):
+                            def _q_gen():
+                                with _ac.messages.stream(
+                                    model="claude-sonnet-4-6",
+                                    max_tokens=2000,
+                                    system=q_system,
+                                    messages=q_history,
+                                    extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+                                ) as stream:
+                                    for text in stream.text_stream:
+                                        yield text
+                            resp = st.write_stream(_q_gen())
+                        st.session_state[q_chat_key].append({"role": "assistant", "content": resp})
+                        st.rerun()
+
+                    q_followup = st.chat_input("Refine answers or ask a follow-up…", key=f"q_followup_{job['id']}")
+                    if q_followup:
+                        st.session_state[q_chat_key].append({"role": "user", "content": q_followup})
+                        st.rerun()
+
+                    if st.button("Start over", key=f"q_clear_{job['id']}", type="secondary"):
+                        st.session_state[q_chat_key] = []
+                        st.rerun()
 
 def _categorize(title: str) -> str:
     t = (title or "").lower()
@@ -771,8 +804,8 @@ USER PROFILE
 Target roles: {', '.join(target_roles) or 'not set'}
 Minimum salary: {'${:,}'.format(min_salary) if min_salary else 'not set'}
 
-RESUME SUMMARY
-{resume_text[:3000]}
+FULL RESUME
+{resume_text}
 
 REVIEW QUEUE (top 10 scored 7+, awaiting decision)
 {queue_lines}
@@ -826,8 +859,9 @@ def _render_assistant_panel(page_key: str, page_context: str = "") -> None:
             with _client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=1024,
-                system=_build_assistant_system_prompt(page_context),
+                system=[{"type": "text", "text": _build_assistant_system_prompt(page_context), "cache_control": {"type": "ephemeral"}}],
                 messages=hist,
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
             ) as stream:
                 for text in stream.text_stream:
                     yield text
@@ -1216,7 +1250,10 @@ elif page == "Dashboard":
     st.dataframe(top, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    _render_assistant_panel("dashboard", "Dashboard — pipeline overview and analytics")
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Need help interpreting your pipeline?</div>', unsafe_allow_html=True)
+    if st.button("💬 Ask Job Pal", key="cta_asst_dashboard", type="secondary"):
+        st.session_state["_nav_page"] = "Assistant"
+        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1336,7 +1373,10 @@ elif page == "Review Queue":
         job_card(job, "rq", ["applied", "skipped", "rejected"])
 
     st.markdown("---")
-    _render_assistant_panel("queue", "Review Queue — jobs scoring 7+ awaiting your decision")
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want to talk through which jobs to apply to?</div>', unsafe_allow_html=True)
+    if st.button("💬 Ask Job Pal", key="cta_asst_queue", type="secondary"):
+        st.session_state["_nav_page"] = "Assistant"
+        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1463,7 +1503,10 @@ elif page == "All Applications":
             st.rerun()
 
     st.markdown("---")
-    _render_assistant_panel("all_apps", "All Applications — full history and bulk status updates")
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Need help with a follow-up or status update?</div>', unsafe_allow_html=True)
+    if st.button("💬 Ask Job Pal", key="cta_asst_all_apps", type="secondary"):
+        st.session_state["_nav_page"] = "Assistant"
+        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1674,7 +1717,10 @@ elif page == "Events":
                     st.rerun()
 
     st.markdown("---")
-    _render_assistant_panel("events", "Events — networking events near the user's city")
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want networking tips or event prep help?</div>', unsafe_allow_html=True)
+    if st.button("💬 Ask Job Pal", key="cta_asst_events", type="secondary"):
+        st.session_state["_nav_page"] = "Assistant"
+        st.rerun()
 
 
 elif page == "Run Pipeline":
@@ -1956,70 +2002,194 @@ elif page == "Assistant":
 
     import anthropic as _anthropic
 
-    def _stream_response(history: list[dict]) -> None:
-        api_key = None
-        try:
-            from config import ANTHROPIC_API_KEY
-            api_key = ANTHROPIC_API_KEY
-        except Exception:
-            pass
+    # ── Load chat history from Supabase on first visit ─────────────
+    if "_chat_history_loaded" not in st.session_state:
+        if _USER_ID:
+            try:
+                st.session_state["_chat_history"] = load_chat_history(_USER_ID)
+            except Exception:
+                st.session_state["_chat_history"] = []
+        else:
+            st.session_state["_chat_history"] = []
+        st.session_state["_chat_history_loaded"] = True
 
-        _client = _anthropic.Anthropic(api_key=api_key)
-
-        def _gen():
-            with _client.messages.stream(
-                model="claude-sonnet-4-6",
-                max_tokens=1024,
-                system=_build_assistant_system_prompt("Assistant page — full chat view"),
-                messages=history,
-            ) as stream:
-                for text in stream.text_stream:
-                    yield text
-
-        with st.chat_message("assistant", avatar="🤖"):
-            response = st.write_stream(_gen())
-
-        st.session_state["_chat_history"].append({"role": "assistant", "content": response})
-
-    # ── Chat state ─────────────────────────────────────────────────
-    if "chat_history" not in st.session_state:
+    if "_chat_history" not in st.session_state:
         st.session_state["_chat_history"] = []
 
-    # Suggested starters
-    if not st.session_state["_chat_history"]:
-        st.markdown('<div class="section-label">Suggested questions</div>', unsafe_allow_html=True)
-        suggestions = [
+    # ── Layout: chat (65%) | context panel (35%) ───────────────────
+    chat_col, ctx_col = st.columns([13, 7])
+
+    with ctx_col:
+        st.markdown('<div class="section-label">Context</div>', unsafe_allow_html=True)
+
+        # Resume badge
+        resume_preview = resume_text[:300].replace("\n", " ").strip()
+        if len(resume_text) > 300:
+            resume_preview += "…"
+        st.markdown(f"""
+        <div style="background:#131315;border:1px solid #1f1f22;border-radius:8px;padding:12px 14px;margin-bottom:12px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#D4FF3A;letter-spacing:0.15em;margin-bottom:6px">✓ FULL RESUME LOADED</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8B8B85;line-height:1.5">{resume_preview}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Queue summary
+        try:
+            _ctx_apps = get_all_applications(user_id=_USER_ID) or []
+        except Exception:
+            _ctx_apps = []
+        _ctx_queue = sorted(
+            [a for a in _ctx_apps if a.get("status") == "new" and (a.get("score") or 0) >= 7],
+            key=lambda x: x.get("score") or 0, reverse=True
+        )
+        _ctx_applied = [a for a in _ctx_apps if a.get("status") == "applied"]
+        _ctx_interviews = [a for a in _ctx_apps if a.get("status") == "interview"]
+
+        st.markdown(f"""
+        <div style="background:#131315;border:1px solid #1f1f22;border-radius:8px;padding:12px 14px;margin-bottom:12px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:8px">PIPELINE SNAPSHOT</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#F5F4EE">
+            <span style="color:#D4FF3A">{len(_ctx_queue)}</span> in queue &nbsp;·&nbsp;
+            <span style="color:#D4FF3A">{len(_ctx_applied)}</span> applied &nbsp;·&nbsp;
+            <span style="color:#D4FF3A">{len(_ctx_interviews)}</span> interviews
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Top 3 queue jobs
+        if _ctx_queue[:3]:
+            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:6px">TOP QUEUE JOBS</div>', unsafe_allow_html=True)
+            for _j in _ctx_queue[:3]:
+                st.markdown(f"""
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8B8B85;padding:4px 0;border-bottom:1px solid #1f1f22">
+                  <span style="color:#D4FF3A">{_j.get('score')}/10</span> {_j.get('title', '')[:30]} @ {_j.get('company', '')[:20]}
+                </div>""", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+        # Job context loader
+        if _ctx_queue:
+            st.markdown('<div class="section-label">Load a job into chat</div>', unsafe_allow_html=True)
+            _job_options = ["— select a job —"] + [
+                f"{j.get('score')}/10 · {j.get('title','')[:35]} @ {j.get('company','')[:20]}"
+                for j in _ctx_queue[:20]
+            ]
+            _selected_job_label = st.selectbox(
+                "Load job into context",
+                _job_options,
+                key="asst_job_selector",
+                label_visibility="collapsed",
+            )
+            if _selected_job_label != "— select a job —":
+                _sel_idx = _job_options.index(_selected_job_label) - 1
+                _sel_job = _ctx_queue[_sel_idx]
+                if st.button("📎 Add to next message", key="asst_inject_job", use_container_width=True):
+                    st.session_state["_asst_job_context"] = _sel_job
+                    st.success(f"✓ {_sel_job.get('title')} loaded — mention it in your message.")
+
+        # Quick-action buttons
+        st.markdown('<div class="section-label" style="margin-top:16px">Quick actions</div>', unsafe_allow_html=True)
+        _quick_actions = [
             "Which jobs in my queue should I apply to first?",
             "What skills am I missing for the roles I'm targeting?",
-            "Write a follow-up email for a job I applied to last week.",
-            "How should I prepare for a Data Scientist interview?",
-            "What salary should I negotiate for a Senior Analytics role?",
+            "How should I negotiate salary for a Senior Data role?",
         ]
-        cols = st.columns(len(suggestions))
-        for col, suggestion in zip(cols, suggestions):
-            with col:
-                if st.button(suggestion, key=f"sug_{suggestion[:20]}", use_container_width=True):
-                    st.session_state["_chat_history"].append({"role": "user", "content": suggestion})
-                    st.rerun()
+        for _qa in _quick_actions:
+            if st.button(_qa, key=f"qa_{_qa[:25]}", use_container_width=True):
+                st.session_state["_chat_history"].append({"role": "user", "content": _qa})
+                if _USER_ID:
+                    try:
+                        save_chat_history(_USER_ID, st.session_state["_chat_history"])
+                    except Exception:
+                        pass
+                st.rerun()
 
-    # Render history
-    for msg in st.session_state["_chat_history"]:
-        avatar = "👤" if msg["role"] == "user" else "🤖"
-        with st.chat_message(msg["role"], avatar=avatar):
-            st.markdown(msg["content"])
+    with chat_col:
+        def _stream_response(history: list[dict]) -> str:
+            _client = _anthropic.Anthropic()
+            _sys_prompt = _build_assistant_system_prompt("Assistant page — full chat view")
 
-    # Stream any pending unanswered user message
-    history = st.session_state["_chat_history"]
-    if history and history[-1]["role"] == "user":
-        _stream_response(history)
+            def _gen():
+                with _client.messages.stream(
+                    model="claude-sonnet-4-6",
+                    max_tokens=1500,
+                    system=[{"type": "text", "text": _sys_prompt, "cache_control": {"type": "ephemeral"}}],
+                    messages=history,
+                    extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+                ) as stream:
+                    for text in stream.text_stream:
+                        yield text
 
-    # Input
-    if prompt := st.chat_input("Ask about your job search…"):
-        st.session_state["_chat_history"].append({"role": "user", "content": prompt})
-        st.rerun()
+            with st.chat_message("assistant", avatar="🤖"):
+                response = st.write_stream(_gen())
+            return response
 
-    # Clear button
-    if st.session_state["_chat_history"]:
-        if st.button("Clear conversation", key="clear_chat"):
-            st.session_state["_chat_history"] = []
+        # Suggested starters (only when empty)
+        if not st.session_state["_chat_history"]:
+            st.markdown('<div class="section-label">Start here</div>', unsafe_allow_html=True)
+            suggestions = [
+                "Which jobs in my queue should I apply to first?",
+                "What skills am I missing for the roles I'm targeting?",
+                "Write a follow-up email for a job I applied to last week.",
+                "How should I prepare for a Data Scientist interview?",
+            ]
+            s_col1, s_col2 = st.columns(2)
+            for i, suggestion in enumerate(suggestions):
+                _c = s_col1 if i % 2 == 0 else s_col2
+                with _c:
+                    if st.button(suggestion, key=f"sug_{i}", use_container_width=True):
+                        st.session_state["_chat_history"].append({"role": "user", "content": suggestion})
+                        if _USER_ID:
+                            try:
+                                save_chat_history(_USER_ID, st.session_state["_chat_history"])
+                            except Exception:
+                                pass
+                        st.rerun()
+
+        # Render history
+        for msg in st.session_state["_chat_history"]:
+            avatar = "👤" if msg["role"] == "user" else "🤖"
+            with st.chat_message(msg["role"], avatar=avatar):
+                st.markdown(msg["content"])
+
+        # Stream pending unanswered user message
+        history = st.session_state["_chat_history"]
+        if history and history[-1]["role"] == "user":
+            response = _stream_response(history)
+            st.session_state["_chat_history"].append({"role": "assistant", "content": response})
+            if _USER_ID:
+                try:
+                    save_chat_history(_USER_ID, st.session_state["_chat_history"])
+                except Exception:
+                    pass
             st.rerun()
+
+        # Input
+        if prompt := st.chat_input("Ask about your job search…"):
+            full_prompt = prompt
+            # Inject job context if one was loaded
+            _job_ctx = st.session_state.pop("_asst_job_context", None)
+            if _job_ctx:
+                full_prompt = (
+                    f"{prompt}\n\n[JOB CONTEXT LOADED]\n"
+                    f"Title: {_job_ctx.get('title')} @ {_job_ctx.get('company')}\n"
+                    f"Score: {_job_ctx.get('score')}/10 — {_job_ctx.get('score_reason','')}\n"
+                    f"Description:\n{(_job_ctx.get('description') or '')[:3000]}"
+                )
+            st.session_state["_chat_history"].append({"role": "user", "content": full_prompt})
+            if _USER_ID:
+                try:
+                    save_chat_history(_USER_ID, st.session_state["_chat_history"])
+                except Exception:
+                    pass
+            st.rerun()
+
+        # Clear button
+        if st.session_state["_chat_history"]:
+            if st.button("Clear conversation", key="clear_chat", type="secondary"):
+                st.session_state["_chat_history"] = []
+                if _USER_ID:
+                    try:
+                        clear_chat_history(_USER_ID)
+                    except Exception:
+                        pass
+                st.rerun()
