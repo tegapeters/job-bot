@@ -23,12 +23,17 @@ def is_logged_in() -> bool:
     return bool(get_user_id())
 
 
-def _store_session(user, access_token: str):
+def _store_session(user, access_token: str, refresh_token: str = None):
     st.session_state["jp_auth"] = {
         "user_id": user.id,
         "email": user.email,
         "access_token": access_token,
+        "refresh_token": refresh_token,
     }
+    # Persist in URL so the session survives browser refresh
+    if refresh_token:
+        st.query_params["rt"] = refresh_token
+    st.query_params["uid"] = user.id
 
 
 def sign_out():
@@ -40,6 +45,12 @@ def sign_out():
                 "min_salary", "_session_restored", "_user_session_restored_for",
                 "_suggested_roles", "ev_manual_cities"):
         st.session_state.pop(key, None)
+    # Clear persisted tokens from URL
+    for param in ("rt", "uid"):
+        try:
+            del st.query_params[param]
+        except Exception:
+            pass
 
 
 def restore_user_session():
@@ -78,6 +89,23 @@ def render_auth_wall():
     """
     if is_logged_in():
         return
+
+    # Silent restore from persisted refresh token (survives browser refresh)
+    _rt = st.query_params.get("rt")
+    if _rt and not st.session_state.get("_rt_failed"):
+        try:
+            resp = _sb().auth.refresh_session(_rt)
+            if resp.user and resp.session:
+                _store_session(resp.user, resp.session.access_token, resp.session.refresh_token)
+                st.rerun()
+                return
+        except Exception:
+            # Expired or revoked — clear and fall through to login form
+            st.session_state["_rt_failed"] = True
+            try:
+                del st.query_params["rt"]
+            except Exception:
+                pass
 
     # Minimal sidebar while logged out
     with st.sidebar:
@@ -128,7 +156,7 @@ def render_auth_wall():
                         resp = _sb().auth.sign_in_with_password(
                             {"email": email, "password": password}
                         )
-                        _store_session(resp.user, resp.session.access_token)
+                        _store_session(resp.user, resp.session.access_token, resp.session.refresh_token)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Sign in failed: {e}")
@@ -154,7 +182,7 @@ def render_auth_wall():
                     try:
                         resp = _sb().auth.sign_up({"email": email_s, "password": pw_s})
                         if resp.user and resp.session:
-                            _store_session(resp.user, resp.session.access_token)
+                            _store_session(resp.user, resp.session.access_token, resp.session.refresh_token)
                             st.rerun()
                         elif resp.user:
                             st.success(
