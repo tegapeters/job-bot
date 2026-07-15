@@ -28,12 +28,25 @@ def save_session(uid: str, resume_text: str, target_roles: list[str]) -> str:
 
 
 def load_session(uid: str) -> dict | None:
-    """Return {resume_text, target_roles} or None if not found."""
+    """Return {resume_text, target_roles, gmail_scan_enabled} or None if not found."""
     sb = get_client()
-    result = sb.table("user_sessions").select("resume_text,target_roles").eq("id", uid).execute()
+    result = sb.table("user_sessions").select("resume_text,target_roles,gmail_scan_enabled").eq("id", uid).execute()
     if result.data:
         return result.data[0]
     return None
+
+
+def save_gmail_opt_in(uid: str, enabled: bool) -> None:
+    """Persist the Gmail rejection-scan opt-in flag for a user."""
+    sb = get_client()
+    try:
+        sb.table("user_sessions").upsert({
+            "id": uid,
+            "gmail_scan_enabled": enabled,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="id").execute()
+    except Exception:
+        pass
 
 
 def clear_session(uid: str):

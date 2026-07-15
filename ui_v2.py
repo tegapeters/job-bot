@@ -446,6 +446,8 @@ def _try_restore_session():
             st.session_state["session_uid"] = uid
             if data.get("target_roles"):
                 st.session_state["target_roles"] = data["target_roles"]
+            if data.get("gmail_scan_enabled"):
+                st.session_state["gmail_scan_enabled"] = True
     except Exception:
         pass  # silently skip — DB down or uid not found
 
@@ -1277,6 +1279,59 @@ if page == "Setup":
         )
         st.caption("To update, upload a new file or paste new text and hit Save again.")
 
+    # ── Gmail Rejection Scanning opt-in ──────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:36px">Gmail Rejection Scanning</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="pipeline-card" style="margin-bottom:16px">
+      <p style="margin:0">
+        <b>Optional.</b> Connect your job-application inbox so Job Pal can scan for
+        rejection emails and automatically surface them on the Applied page.
+        Your credentials are <b>never stored</b> — they live in memory for this session only.
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _gmail_enabled = st.session_state.get("gmail_scan_enabled", False)
+    _gmail_toggle = st.toggle(
+        "Enable Gmail rejection scanning",
+        value=_gmail_enabled,
+        key="gmail_opt_in_toggle",
+    )
+    if _gmail_toggle != _gmail_enabled:
+        st.session_state["gmail_scan_enabled"] = _gmail_toggle
+        if _USER_ID:
+            from sessions import save_gmail_opt_in
+            save_gmail_opt_in(_USER_ID, _gmail_toggle)
+
+    if _gmail_toggle:
+        st.markdown("""
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">
+        You need a <b>Gmail App Password</b> — not your regular password.<br>
+        Create one at: <b>myaccount.google.com → Security → 2-Step Verification → App passwords</b>
+        </div>
+        """, unsafe_allow_html=True)
+
+        _gcol1, _gcol2 = st.columns(2)
+        with _gcol1:
+            _gmail_email = st.text_input(
+                "Gmail address you apply with",
+                value=st.session_state.get("gmail_apply_email", "tegapeters11@gmail.com"),
+                key="gmail_email_input",
+            )
+        with _gcol2:
+            _gmail_pw = st.text_input(
+                "App Password (16-char, no spaces)",
+                type="password",
+                placeholder="xxxx xxxx xxxx xxxx",
+                key="gmail_pw_input",
+            )
+        if st.button("Save Gmail credentials for this session", key="save_gmail_creds"):
+            if _gmail_email and _gmail_pw:
+                st.session_state["gmail_apply_email"] = _gmail_email.strip()
+                st.session_state["gmail_app_password"] = _gmail_pw.replace(" ", "").strip()
+                st.success("✓ Gmail credentials saved for this session. Go to Applied page to scan.")
+            else:
+                st.warning("Enter both email and app password.")
 
 elif page == "Dashboard":
     page_header("Job Pal · Techturi", "Your <em>pipeline.</em>")
@@ -1471,6 +1526,57 @@ elif page == "Applied":
     if not applied:
         st.info("No applications marked 'applied' yet. Move jobs here from the Review Queue.")
         st.stop()
+
+    # ── Gmail rejection scan ──────────────────────────────────────────
+    _gmail_on     = st.session_state.get("gmail_scan_enabled", False)
+    _gmail_email  = st.session_state.get("gmail_apply_email", "")
+    _gmail_pw     = st.session_state.get("gmail_app_password", "")
+
+    if _gmail_on and _gmail_email and _gmail_pw:
+        _scan_col, _ = st.columns([2, 5])
+        with _scan_col:
+            if st.button("📬 Scan Gmail for rejections", type="secondary", use_container_width=True):
+                with st.spinner("Scanning inbox…"):
+                    try:
+                        from rejection_scanner import scan_inbox
+                        _matches = scan_inbox(_gmail_email, _gmail_pw, applied, lookback_days=90)
+                        st.session_state["_rejection_matches"] = _matches
+                    except ConnectionError as _ce:
+                        st.error(str(_ce))
+                        st.session_state.pop("_rejection_matches", None)
+                    except Exception as _ex:
+                        st.error(f"Scan failed: {_ex}")
+                        st.session_state.pop("_rejection_matches", None)
+
+        _matches = st.session_state.get("_rejection_matches")
+        if _matches is not None:
+            if not _matches:
+                st.success("No rejection emails found for your applied jobs. 🎉")
+            else:
+                st.warning(f"Found **{len(_matches)}** possible rejection email{'s' if len(_matches) != 1 else ''}. Review and confirm below.")
+                _to_mark: list[str] = []
+                for _m in _matches:
+                    _j = _m["job"]
+                    _conf = int(_m["confidence"] * 100)
+                    with st.expander(f"{'🔴' if _conf >= 80 else '🟡'} {_j.get('title')} @ {_j.get('company')}  —  {_conf}% match"):
+                        st.markdown(f"**From:** {_m['email_from']}")
+                        st.markdown(f"**Subject:** {_m['email_subject']}")
+                        st.markdown(f"**Date:** {_m['email_date']}")
+                        st.markdown(f"**Snippet:**")
+                        st.caption(_m["snippet"])
+                        if st.checkbox(f"Mark as rejected", key=f"rej_check_{_j['id']}", value=_conf >= 80):
+                            _to_mark.append(_j["id"])
+
+                if _to_mark:
+                    if st.button(f"✅ Mark {len(_to_mark)} job{'s' if len(_to_mark) != 1 else ''} as Rejected", type="primary"):
+                        from tracker import update_status
+                        for _jid in _to_mark:
+                            update_status(_jid, "rejected", user_id=_USER_ID)
+                        st.success(f"Marked {len(_to_mark)} job(s) as rejected.")
+                        st.session_state.pop("_rejection_matches", None)
+                        st.rerun()
+    elif _gmail_on and (not _gmail_email or not _gmail_pw):
+        st.caption("📬 Gmail scanning is enabled — add your credentials on the Setup page to activate it.")
 
     st.markdown(f'<div class="section-label">{len(applied)} applications sent</div>', unsafe_allow_html=True)
 

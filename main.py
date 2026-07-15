@@ -283,14 +283,64 @@ def cmd_linkedin_login():
     linkedin_login()
 
 
+def cmd_scan_rejections():
+    """Scan Gmail inbox for rejection emails and mark matched applied jobs."""
+    import os, getpass
+    from tracker import get_all_applications, update_status
+    from rejection_scanner import scan_inbox
+
+    gmail_email = os.getenv("GMAIL_APPLY_EMAIL") or input("Gmail address you apply with: ").strip()
+    app_password = os.getenv("GMAIL_APP_PASSWORD") or getpass.getpass("App Password (16-char): ").replace(" ", "")
+
+    apps = get_all_applications(user_id=None)
+    applied = [a for a in apps if a.get("status") == "applied"]
+
+    if not applied:
+        print("No applied jobs to check against.")
+        return
+
+    print(f"\n📬 Scanning inbox for rejections ({len(applied)} applied jobs to check)…")
+    try:
+        matches = scan_inbox(gmail_email, app_password, applied, lookback_days=90)
+    except ConnectionError as e:
+        print(f"❌ {e}")
+        return
+
+    if not matches:
+        print("✅ No rejection emails found. Good news!")
+        return
+
+    print(f"\n⚠️  Found {len(matches)} possible rejection(s):\n")
+    to_mark = []
+    for m in matches:
+        j = m["job"]
+        conf = int(m["confidence"] * 100)
+        print(f"  {'🔴' if conf >= 80 else '🟡'} [{conf}%] {j['title']} @ {j.get('company','')}")
+        print(f"      From: {m['email_from']}")
+        print(f"      Subj: {m['email_subject']}")
+        print(f"      Date: {m['email_date']}")
+        print(f"      \"{m['snippet'][:120]}…\"\n")
+        ans = input("  Mark as rejected? [y/N] → ").strip().lower()
+        if ans == "y":
+            to_mark.append(j["id"])
+
+    if to_mark:
+        for jid in to_mark:
+            update_status(jid, "rejected", user_id=None)
+        print(f"\n✅ Marked {len(to_mark)} job(s) as rejected.")
+    else:
+        print("\nNo changes made.")
+
+
 COMMANDS = {
-    "scrape":         cmd_scrape,
-    "review":         cmd_review,
-    "apply":          cmd_apply,
-    "manual":         cmd_manual,
-    "status":         cmd_status,
-    "setup-db":       cmd_setup_db,
-    "linkedin-login": cmd_linkedin_login,
+    "scrape":            cmd_scrape,
+    "review":            cmd_review,
+    "apply":             cmd_apply,
+    "manual":            cmd_manual,
+    "status":            cmd_status,
+    "setup-db":          cmd_setup_db,
+    "linkedin-login":    cmd_linkedin_login,
+    "scan-rejections":   cmd_scan_rejections,
 }
 
 if __name__ == "__main__":
