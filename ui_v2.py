@@ -632,6 +632,49 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 st.success(f"Logged: {signal}")
                 st.rerun()
 
+        # ── Company Research ──────────────────────────────────────
+        _company_name = job.get("company", "").strip()
+        if _company_name:
+            st.markdown('<div class="section-label" style="margin-top:16px">Company Research</div>', unsafe_allow_html=True)
+            with st.expander(f"🏢 {_company_name} — history, funding & about", expanded=False):
+                from researcher import research_company, load_cached
+                _cr_key = f"_cr_{job['id']}"
+                if _cr_key not in st.session_state:
+                    # Try cache first (instant), else fetch
+                    _cached = load_cached(_company_name)
+                    if _cached:
+                        st.session_state[_cr_key] = _cached
+                    else:
+                        with st.spinner(f"Researching {_company_name}…"):
+                            st.session_state[_cr_key] = research_company(
+                                _company_name, job_title=job.get("title", "")
+                            )
+
+                _cr = st.session_state[_cr_key]
+                if _cr.get("summary"):
+                    st.markdown(f"**Summary**\n\n{_cr['summary']}")
+                if _cr.get("website"):
+                    st.markdown(f"**Website:** [{_cr['website']}]({_cr['website']})")
+                if _cr.get("funding"):
+                    st.markdown(f"**Funding / Valuation**\n\n{_cr['funding']}")
+                if _cr.get("about_text"):
+                    st.markdown("**About (from their site)**")
+                    st.markdown(
+                        f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;'
+                        f'color:#8B8B85;line-height:1.6;padding:10px;background:#131315;'
+                        f'border-radius:6px;border:1px solid #1f1f22">{_cr["about_text"][:1200]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                _refresh_key = f"_cr_refresh_{job['id']}"
+                if st.button("🔄 Refresh research", key=_refresh_key, type="secondary"):
+                    from researcher import research_company as _rc_force
+                    with st.spinner("Re-fetching…"):
+                        st.session_state[_cr_key] = _rc_force(
+                            _company_name, job_title=job.get("title", ""), force_refresh=True
+                        )
+                    st.rerun()
+
         if job.get("cover_letter"):
             cl_col, dl_col = st.columns([5, 1])
             with cl_col:
@@ -674,6 +717,18 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             if not resume_text:
                 st.warning("No resume loaded — go to Setup first.")
             else:
+                # Pull company research (cached or fetch)
+                from researcher import load_cached as _q_load_cr, research_company as _q_rc
+                _q_cr_key = f"_cr_{job['id']}"
+                if _q_cr_key not in st.session_state:
+                    _q_cached = _q_load_cr(job.get("company", ""))
+                    st.session_state[_q_cr_key] = _q_cached or {}
+                _q_cr = st.session_state.get(_q_cr_key) or {}
+                _q_company_block = (
+                    f"\nCOMPANY RESEARCH:\n{_q_cr['research_text']}"
+                    if _q_cr.get("research_text") else ""
+                )
+
                 q_system = [{"type": "text", "text": f"""You are a job application assistant helping the user draft honest, specific answers to application questionnaire questions.
 
 JOB: {job.get('title')} at {job.get('company')}
@@ -682,6 +737,7 @@ WHY IT SCORED WELL: {job.get('score_reason', '')}
 
 JOB DESCRIPTION:
 {job.get('description') or ''}
+{_q_company_block}
 
 USER RESUME (full):
 {resume_text}
@@ -690,6 +746,7 @@ USER RESUME (full):
 
 Instructions:
 - Answer each question using specific, honest examples drawn from the resume
+- Reference the company's mission/values from the research above when relevant (e.g. "why do you want to work here?")
 - Keep each answer 2-4 sentences unless the question clearly needs more
 - Format: restate the question briefly, then answer it
 - Do not invent experience not in the resume
@@ -2082,9 +2139,14 @@ elif page == "Assistant":
             if _selected_job_label != "— select a job —":
                 _sel_idx = _job_options.index(_selected_job_label) - 1
                 _sel_job = _ctx_queue[_sel_idx]
-                if st.button("📎 Add to next message", key="asst_inject_job", use_container_width=True):
+                if st.button("📎 Add job + company research", key="asst_inject_job", use_container_width=True):
+                    from researcher import research_company, load_cached
+                    _co = _sel_job.get("company", "")
+                    with st.spinner(f"Loading {_co} research…"):
+                        _cr = load_cached(_co) or research_company(_co, job_title=_sel_job.get("title", ""))
                     st.session_state["_asst_job_context"] = _sel_job
-                    st.success(f"✓ {_sel_job.get('title')} loaded — mention it in your message.")
+                    st.session_state["_asst_company_research"] = _cr
+                    st.success(f"✓ {_sel_job.get('title')} @ {_co} loaded with company research.")
 
         # Quick-action buttons
         st.markdown('<div class="section-label" style="margin-top:16px">Quick actions</div>', unsafe_allow_html=True)
@@ -2166,8 +2228,9 @@ elif page == "Assistant":
         # Input
         if prompt := st.chat_input("Ask about your job search…"):
             full_prompt = prompt
-            # Inject job context if one was loaded
+            # Inject job context + company research if loaded
             _job_ctx = st.session_state.pop("_asst_job_context", None)
+            _cr_ctx = st.session_state.pop("_asst_company_research", None)
             if _job_ctx:
                 full_prompt = (
                     f"{prompt}\n\n[JOB CONTEXT LOADED]\n"
@@ -2175,6 +2238,8 @@ elif page == "Assistant":
                     f"Score: {_job_ctx.get('score')}/10 — {_job_ctx.get('score_reason','')}\n"
                     f"Description:\n{(_job_ctx.get('description') or '')[:3000]}"
                 )
+                if _cr_ctx and _cr_ctx.get("research_text"):
+                    full_prompt += f"\n\n{_cr_ctx['research_text']}"
             st.session_state["_chat_history"].append({"role": "user", "content": full_prompt})
             if _USER_ID:
                 try:
