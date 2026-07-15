@@ -5,6 +5,7 @@ Uses the jobs-guest API endpoint which returns the full posting without auth or 
 import re
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 HEADERS = {
     "User-Agent": (
@@ -101,36 +102,53 @@ def fetch_linkedin_job(url: str) -> dict:
     return result
 
 
+_ENRICH_WORKERS = 6   # concurrent LinkedIn fetches
+_ENRICH_DELAY   = 0.1 # small per-worker stagger to avoid burst
+
+
+def _fetch_and_update(job: dict) -> dict:
+    """Fetch a single job and return the updated job dict (thread-safe — no shared state)."""
+    time.sleep(_ENRICH_DELAY)
+    data = fetch_linkedin_job(job.get("url", ""))
+    if data["description"]:
+        job["description"] = data["description"]
+    if data["company"] and not job.get("company"):
+        job["company"] = data["company"]
+    if data["posted_at"]:
+        job["posted_at"] = data["posted_at"]
+    if data["salary"]:
+        job["salary_range"] = data["salary"]
+    return job
+
+
 def enrich_jobs(jobs: list[dict]) -> list[dict]:
-    """Fetch full descriptions for LinkedIn jobs. Non-LinkedIn jobs are skipped
-    (their descriptions come directly from the scraper API/RSS).
-    Jobs that already have a description are skipped to avoid double-fetching."""
+    """Fetch full descriptions for LinkedIn jobs in parallel.
+    Non-LinkedIn jobs are skipped (descriptions come from scraper API/RSS).
+    Jobs that already have a description are skipped."""
     li_jobs = [j for j in jobs if "linkedin.com" in (j.get("url") or "")]
     other   = [j for j in jobs if "linkedin.com" not in (j.get("url") or "")]
 
-    to_fetch  = [j for j in li_jobs if not j.get("description")]
-    already   = [j for j in li_jobs if j.get("description")]
+    to_fetch = [j for j in li_jobs if not j.get("description")]
+    already  = [j for j in li_jobs if j.get("description")]
 
-    if to_fetch:
-        print(f"\n🌐 Enriching {len(to_fetch)} LinkedIn jobs "
-              f"({len(already)} already have descriptions, skipping {len(other)} non-LinkedIn)...")
-    for i, job in enumerate(to_fetch):
-        url = job.get("url", "")
-        print(f"  [{i+1}/{len(to_fetch)}] {job['title'][:55]}", end="", flush=True)
-        data = fetch_linkedin_job(url)
-        if data["description"]:
-            job["description"] = data["description"]
-            print(f" ✓ ({len(data['description'])} chars)", end="")
-        else:
-            print(" ✗ no desc", end="")
-        if data["company"] and not job.get("company"):
-            job["company"] = data["company"]
-        if data["posted_at"]:
-            job["posted_at"] = data["posted_at"]
-        if data["salary"]:
-            job["salary_range"] = data["salary"]
-            print(f" | {data['salary'][:40]}", end="")
-        print()
-        time.sleep(0.8)
+    if not to_fetch:
+        return already + other
+
+    n = len(to_fetch)
+    print(f"\n🌐 Enriching {n} LinkedIn jobs ({len(already)} already have descriptions, "
+          f"skipping {len(other)} non-LinkedIn)...")
+
+    done = 0
+    workers = min(_ENRICH_WORKERS, n)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_fetch_and_update, job): job for job in to_fetch}
+        for future in as_completed(futures):
+            job = future.result()
+            done += 1
+            desc_len = len(job.get("description") or "")
+            salary   = job.get("salary_range", "")
+            status   = f"✓ ({desc_len} chars)" if desc_len else "✗ no desc"
+            sal_str  = f" | {salary[:40]}" if salary else ""
+            print(f"  [{done}/{n}] {job['title'][:50]} {status}{sal_str}")
 
     return to_fetch + already + other

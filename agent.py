@@ -9,6 +9,7 @@ import json
 import re
 import time
 import anthropic
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import (
     ANTHROPIC_API_KEY,
     REVIEW_MIN_SCORE,
@@ -539,15 +540,34 @@ def process_jobs(
     from fetcher import enrich_jobs
     to_enrich = enrich_jobs(to_enrich)
 
-    # Pass 2: full scoring
-    print(f"\n🤖 Pass 2 — full scoring {len(to_enrich)} jobs (mode={mode})...")
+    # Pass 2: full scoring — parallel
+    n = len(to_enrich)
+    print(f"\n🤖 Pass 2 — full scoring {n} jobs (mode={mode}, workers=8)...")
     scored = list(rejected_early)
-    for i, job in enumerate(to_enrich):
-        job = score_job(job, **score_kwargs)
-        if verbose:
-            flag = "✅" if job["score"] >= REVIEW_MIN_SCORE else "  "
-            print(f"  {flag} [{i+1}/{len(to_enrich)}] {job['title']} @ {job.get('company','')} — {job['score']}/10")
-        scored.append(job)
+
+    if n == 0:
+        pass
+    elif mode == "cheap":
+        # cheap is CPU-only — no benefit from threads, just run inline
+        for job in to_enrich:
+            scored.append(score_job(job, **score_kwargs))
+    else:
+        done = 0
+        lock_print = __import__("threading").Lock()
+
+        def _score_one(job):
+            return score_job(job, **score_kwargs)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {pool.submit(_score_one, job): job for job in to_enrich}
+            for future in as_completed(futures):
+                result = future.result()
+                done += 1
+                if verbose:
+                    flag = "✅" if result["score"] >= REVIEW_MIN_SCORE else "  "
+                    with lock_print:
+                        print(f"  {flag} [{done}/{n}] {result['title']} @ {result.get('company','')} — {result['score']}/10")
+                scored.append(result)
 
     qualified = [j for j in scored if j["score"] >= REVIEW_MIN_SCORE]
     print(f"\n✅ {len(qualified)} jobs scored {REVIEW_MIN_SCORE}+ | {len(scored)-len(qualified)} below threshold")
@@ -555,12 +575,20 @@ def process_jobs(
     letters_enabled = ENABLE_COVER_LETTERS if enable_cover_letters is None else bool(enable_cover_letters)
     if letters_enabled and client and mode != "cheap":
         cl_jobs = [j for j in qualified if (j.get("score") or 0) >= COVER_LETTER_MIN_SCORE]
-        print(f"\n✍️  Cover letters for {len(cl_jobs)} jobs scoring {COVER_LETTER_MIN_SCORE}+...")
-        for i, job in enumerate(cl_jobs):
-            print(f"  [{i+1}/{len(cl_jobs)}] {job['title']} @ {job.get('company','')}")
-            cl = generate_cover_letter(job, resume_text=resume_text)
-            if cl:
-                job["cover_letter"] = cl
+        print(f"\n✍️  Cover letters for {len(cl_jobs)} jobs scoring {COVER_LETTER_MIN_SCORE}+ (workers=3)...")
+
+        cl_done = 0
+        def _gen_letter(job):
+            return job, generate_cover_letter(job, resume_text=resume_text)
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {pool.submit(_gen_letter, job): job for job in cl_jobs}
+            for future in as_completed(futures):
+                job, cl = future.result()
+                cl_done += 1
+                print(f"  [{cl_done}/{len(cl_jobs)}] {job['title']} @ {job.get('company','')}")
+                if cl:
+                    job["cover_letter"] = cl
     else:
         print("\n✍️  Cover letters skipped.")
 

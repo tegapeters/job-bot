@@ -5,6 +5,7 @@ from .jobicy import scrape_jobicy
 from .remoteok import scrape_remoteok
 import inspect
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Short words that carry no meaning for role matching
 _STOPWORDS = {"and", "or", "the", "for", "of", "in", "at", "a", "an", "to", "by",
@@ -53,21 +54,28 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0) -> list[dict
         ("Jobicy",           scrape_jobicy),
     ]
 
-    for name, fn in sources:
-        try:
-            print(f"🔍 Scraping {name}...")
-            sig = inspect.signature(fn).parameters
-            kwargs = {}
-            if "target_roles" in sig:
-                kwargs["target_roles"] = target_roles
-            if "min_salary" in sig:
-                kwargs["min_salary"] = min_salary
-            jobs = fn(**kwargs)
-            results[name] = jobs
-            print(f"   → {len(jobs)} jobs")
-        except Exception as e:
-            print(f"   ⚠️  {name} failed: {e}")
-            results[name] = []
+    def _run_scraper(name: str, fn) -> tuple[str, list[dict]]:
+        print(f"🔍 Scraping {name}...")
+        sig = inspect.signature(fn).parameters
+        kwargs = {}
+        if "target_roles" in sig:
+            kwargs["target_roles"] = target_roles
+        if "min_salary" in sig:
+            kwargs["min_salary"] = min_salary
+        jobs = fn(**kwargs)
+        print(f"   → {name}: {len(jobs)} jobs")
+        return name, jobs
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {pool.submit(_run_scraper, name, fn): name for name, fn in sources}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                n, jobs = future.result()
+                results[n] = jobs
+            except Exception as e:
+                print(f"   ⚠️  {name} failed: {e}")
+                results[name] = []
 
     all_jobs = [j for jobs in results.values() for j in jobs]
 
