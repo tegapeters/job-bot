@@ -31,10 +31,25 @@ _SKIP_DOMAINS = (
     "linkedin.com", "indeed.com", "glassdoor", "facebook.com",
     "twitter.com", "x.com", "wikipedia.org", "bloomberg.com",
     "crunchbase.com", "ycombinator.com", "builtin.com", "ziprecruiter.com",
-    "monster.com", "careerbuilder.com", "simplyhired.com",
+    "monster.com", "careerbuilder.com", "simplyhired.com", "dailyremote.com",
+    "remote.co", "weworkremotely.com", "remotive.io", "wellfound.com",
+    "levels.fyi", "teamblind.com", "payscale.com", "salary.com",
+    "google.com/paths", "aws.amazon.com", "skills.google",
+    "theladders.com", "zippia.com", "comparably.com", "pitchbook.com",
+    "owler.com", "dnb.com", "zoominfo.com", "rocketreach.co",
+    "youtube.com", "sonara.ai", "dataford.io", "interviewguide", "interview-guide",
+    "jobleads.com", "jobisite.com", "smartrecruiters.com", "workable.com",
+    "lever.co", "greenhouse.io", "ashbyhq.com", "breezy.hr",
 )
 
-_SKIP_PATHS = ("/careers", "/jobs", "/job/", "/open-positions", "/apply", "/hiring")
+_SKIP_PATHS = (
+    "/careers", "/jobs", "/job/", "/open-positions", "/apply", "/hiring",
+    "/category/", "/positions", "/opportunities", "/our-teams", "/work-with-us",
+    "/join-us", "/join-our-team", "/vacancies",
+)
+
+# Any netloc containing these strings is a career/jobs site
+_CAREER_NETLOC_FRAGMENTS = ("careers", "jobs", "talent", "recruit", "lever.co", "greenhouse.io")
 
 
 # ── Supabase cache ────────────────────────────────────────────────────
@@ -94,15 +109,48 @@ def _ddg_company_summary(company: str, job_title: str = "") -> dict:
 def _find_homepage(company: str, job_title: str = "") -> str | None:
     hint = f"{job_title} " if job_title else ""
     results = _ddg_text(f"{hint}{company} official website", max_results=8)
+    from urllib.parse import urlparse
+
+    def _is_bad_url(url: str) -> bool:
+        if not url:
+            return True
+        if any(s in url for s in _SKIP_DOMAINS):
+            return True
+        if any(p in url.lower() for p in _SKIP_PATHS):
+            return True
+        netloc = urlparse(url).netloc.lower()
+        if any(f in netloc for f in _CAREER_NETLOC_FRAGMENTS):
+            return True
+        return False
+
+    shallow, deep = [], []
     for r in results:
         url = r.get("href", "")
-        if not url:
+        if _is_bad_url(url):
             continue
-        if any(s in url for s in _SKIP_DOMAINS):
-            continue
-        if any(p in url for p in _SKIP_PATHS):
-            continue
+        path_depth = len([p for p in urlparse(url).path.split("/") if p])
+        (shallow if path_depth <= 1 else deep).append(url)
+
+    for url in shallow + deep:
         return url.rstrip("/")
+
+    # Fallback: try obvious domain variants from company name
+    words = re.sub(r"[^a-z0-9 ]", "", company.lower()).split()
+    slugs = []
+    if words:
+        slugs.append("".join(words))           # fordmotorcompany
+        slugs.append(words[0])                  # ford
+        if len(words) >= 2:
+            slugs.append(words[0] + words[1])  # fordmotor
+    for slug in dict.fromkeys(slugs):           # dedupe, preserve order
+        for tld in (".com", ".io", ".ai", ".co"):
+            guessed = f"https://www.{slug}{tld}"
+            try:
+                r = requests.get(guessed, headers=_HEADERS, timeout=4, allow_redirects=True)
+                if r.status_code == 200 and slug in r.url.lower():
+                    return guessed.rstrip("/")
+            except Exception:
+                continue
     return None
 
 

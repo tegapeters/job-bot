@@ -551,8 +551,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 .replace("title overlap with roles you liked", "👍 Matches roles you've gone for")
             )
             # Replace "title contains patterns you skip (x, y)" with friendlier form
-            import re as _re
-            friendly = _re.sub(
+            friendly = re.sub(
                 r"title contains patterns you skip \(([^)]+)\)",
                 lambda m: f"⏭️ You tend to skip {m.group(1)} roles",
                 friendly
@@ -636,11 +635,11 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
         _company_name = job.get("company", "").strip()
         if _company_name:
             st.markdown('<div class="section-label" style="margin-top:16px">Company Research</div>', unsafe_allow_html=True)
-            with st.expander(f"🏢 {_company_name} — history, funding & about", expanded=False):
+            _show_cr = st.toggle(f"🏢 {_company_name} — history, funding & about", key=f"cr_toggle_{job['id']}", value=False)
+            if _show_cr:
                 from researcher import research_company, load_cached
                 _cr_key = f"_cr_{job['id']}"
                 if _cr_key not in st.session_state:
-                    # Try cache first (instant), else fetch
                     _cached = load_cached(_company_name)
                     if _cached:
                         st.session_state[_cr_key] = _cached
@@ -665,9 +664,9 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                         f'border-radius:6px;border:1px solid #1f1f22">{_cr["about_text"][:1200]}</div>',
                         unsafe_allow_html=True,
                     )
-
-                _refresh_key = f"_cr_refresh_{job['id']}"
-                if st.button("🔄 Refresh research", key=_refresh_key, type="secondary"):
+                if not any(_cr.get(k) for k in ("summary", "website", "funding", "about_text")):
+                    st.caption("No research data found for this company.")
+                if st.button("🔄 Refresh research", key=f"cr_refresh_{job['id']}", type="secondary"):
                     from researcher import research_company as _rc_force
                     with st.spinner("Re-fetching…"):
                         st.session_state[_cr_key] = _rc_force(
@@ -682,7 +681,6 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             with dl_col:
                 import io
                 from docx import Document
-                from docx.shared import Pt
                 doc = Document()
                 doc.add_heading(f"{job.get('title', '')} — {job.get('company', '')}", level=1)
                 for para in job["cover_letter"].split("\n"):
@@ -703,10 +701,16 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 f'<div class="cover-letter">{job["cover_letter"]}</div>',
                 unsafe_allow_html=True,
             )
+            st.markdown('<div class="section-label" style="margin-top:8px">📋 Copy-ready</div>', unsafe_allow_html=True)
+            _cl_clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', job["cover_letter"])
+            _cl_clean = re.sub(r'\*([^*]+)\*', r'\1', _cl_clean)
+            _cl_clean = re.sub(r'\n{3,}', '\n\n', _cl_clean).strip()
+            st.code(_cl_clean, language=None)
 
         # ── Questionnaire Helper (conversational) ─────────────────
         st.markdown('<div class="section-label" style="margin-top:16px">Questionnaire Helper</div>', unsafe_allow_html=True)
-        with st.expander("📋 Draft answers to application questions", expanded=False):
+        _show_q = st.toggle("📋 Draft answers to application questions", key=f"q_toggle_{job['id']}", value=bool(st.session_state.get(f"q_chat_{job['id']}")))
+        if _show_q:
             q_chat_key = f"q_chat_{job['id']}"
             if q_chat_key not in st.session_state:
                 st.session_state[q_chat_key] = []
@@ -790,10 +794,29 @@ Instructions:
                         st.session_state[q_chat_key].append({"role": "assistant", "content": resp})
                         st.rerun()
 
-                    q_followup = st.chat_input("Refine answers or ask a follow-up…", key=f"q_followup_{job['id']}")
-                    if q_followup:
-                        st.session_state[q_chat_key].append({"role": "user", "content": q_followup})
-                        st.rerun()
+                    # ── Copy-ready answers ─────────────────────────
+                    _last_answer = next(
+                        (m["content"] for m in reversed(q_history) if m["role"] == "assistant"),
+                        None,
+                    )
+                    if _last_answer:
+                        st.markdown('<div class="section-label" style="margin-top:12px">📋 Copy-ready answers</div>', unsafe_allow_html=True)
+                        # Strip markdown so pasting into forms is clean
+                        _clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', _last_answer)
+                        _clean = re.sub(r'\*([^*]+)\*', r'\1', _clean)
+                        _clean = re.sub(r'^#{1,6}\s+', '', _clean, flags=re.MULTILINE)
+                        _clean = re.sub(r'\n{3,}', '\n\n', _clean).strip()
+                        st.code(_clean, language=None)
+
+                    with st.form(key=f"q_followup_form_{job['id']}", clear_on_submit=True):
+                        q_followup = st.text_input(
+                            "Follow-up",
+                            placeholder="e.g. make answer 2 shorter / add an Oracle example",
+                            label_visibility="collapsed",
+                        )
+                        if st.form_submit_button("Send", type="secondary") and q_followup.strip():
+                            st.session_state[q_chat_key].append({"role": "user", "content": q_followup.strip()})
+                            st.rerun()
 
                     if st.button("Start over", key=f"q_clear_{job['id']}", type="secondary"):
                         st.session_state[q_chat_key] = []
