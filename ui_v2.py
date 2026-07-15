@@ -1723,20 +1723,38 @@ elif page == "Applied":
     elif _gmail_on and (not _gmail_email or not _gmail_pw):
         st.caption("📬 Gmail scanning is enabled — add your credentials on the Setup page to activate it.")
 
-    st.markdown(f'<div class="section-label">{len(applied)} applications sent</div>', unsafe_allow_html=True)
-
-    f1, f2 = st.columns([3, 1])
+    # ── Filters ──────────────────────────────────────────────────────
+    f1, f2, f3 = st.columns([3, 2, 1])
     with f1:
         search = st.text_input("Search", placeholder="Company or title...")
     with f2:
+        _date_options = {"Last 30 days": 30, "Last 60 days": 60, "Last 90 days": 90, "All time": 0}
+        _date_label   = st.selectbox("Date range", list(_date_options.keys()), index=0)
+        _date_days    = _date_options[_date_label]
+    with f3:
         cover_letter_only = st.toggle("Cover letter only", value=False)
 
     if search:
         applied = [a for a in applied if
                    search.lower() in (a.get("title") or "").lower() or
                    search.lower() in (a.get("company") or "").lower()]
+    if _date_days:
+        from datetime import datetime, timezone, timedelta
+        _cutoff = datetime.now(timezone.utc) - timedelta(days=_date_days)
+        def _after_cutoff(job):
+            _ts = job.get("created_at") or ""
+            if not _ts:
+                return True
+            try:
+                _dt = datetime.fromisoformat(_ts.replace("Z", "+00:00"))
+                return _dt >= _cutoff
+            except Exception:
+                return True
+        applied = [a for a in applied if _after_cutoff(a)]
     if cover_letter_only:
         applied = [a for a in applied if a.get("cover_letter")]
+
+    st.markdown(f'<div class="section-label">{len(applied)} applications</div>', unsafe_allow_html=True)
 
     for job in sorted(applied, key=lambda x: x.get("score") or 0, reverse=True):
         job_card(job, "ap", ["interview", "rejected", "skipped", "application_closed"])
