@@ -49,9 +49,6 @@ Key rules:
 - Only drop to 6 or below when there are actual skill gaps, not just a title-level concern.
 - Unknown or unlisted salary is NEUTRAL — do not penalise for it. Only mark salary as a concern
   when the listed salary is confirmed below the candidate's target.
-- Score 1 if the role is in domestic/private household staffing, celebrity household management,
-  or private family service (nanny, butler, housekeeper, estate household manager, etc.).
-  These are fundamentally different from corporate roles — a strong corporate resume is not a match.
 
 Evaluate based on:
 - Skill fit (primary): how well do the candidate's actual skills match what the job requires?
