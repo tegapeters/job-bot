@@ -517,12 +517,28 @@ def clear_all_data(user_id: str | None = None):
 # ── Networking events ─────────────────────────────────────────────
 
 def upsert_events(events: list[dict], user_id: str | None = None):
-    """Insert/update networking events into ShutterMuse DB."""
+    """Insert/update networking events. Preserves user-set statuses (interested/attending/skipped)
+    so a re-scrape never wipes events the user has already marked."""
     sb = get_events_client()
+
+    # Fetch statuses for any events that already exist so we don't reset them
+    incoming_ids = [e["id"] for e in events if e.get("id")]
+    existing_statuses: dict[str, str] = {}
+    if incoming_ids:
+        try:
+            chunk = incoming_ids[:500]  # Supabase IN limit
+            res = sb.table("networking_events").select("id,status").in_("id", chunk).execute()
+            existing_statuses = {r["id"]: r["status"] for r in (res.data or [])}
+        except Exception:
+            pass
+
     rows = []
     for e in events:
         if not e.get("id"):
             continue
+        # Keep user-set status; only assign "new" if the event is truly new
+        prev = existing_statuses.get(e["id"])
+        status = prev if prev and prev != "new" else "new"
         row = {
             "id": e["id"],
             "source": e.get("source", ""),
@@ -534,7 +550,7 @@ def upsert_events(events: list[dict], user_id: str | None = None):
             "organizer": e.get("organizer", ""),
             "relevance_score": e.get("relevance_score"),
             "relevance_reason": e.get("relevance_reason", ""),
-            "status": e.get("status", "new"),
+            "status": status,
         }
         if user_id:
             row["user_id"] = user_id

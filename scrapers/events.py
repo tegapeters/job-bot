@@ -265,70 +265,10 @@ def _fetch_luma_description(event_url: str) -> str:
 # ── Eventbrite ────────────────────────────────────────────────────
 
 def scrape_eventbrite_city(city_slug: str = "houston", state: str = "tx") -> list[dict]:
-    """Scrape professional/tech/business events from Eventbrite via ld+json."""
-    events: list[dict] = []
-    seen: set[str] = set()
-
-    for category in EVENTBRITE_CATEGORIES:
-        url = f"https://www.eventbrite.com/d/{state}--{city_slug}/{category}/"
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=15)
-            ld_blocks = re.findall(
-                r'<script type="application/ld\+json">(.*?)</script>', r.text, re.DOTALL
-            )
-            for block in ld_blocks:
-                try:
-                    data = json.loads(block)
-                    if data.get("@type") != "ItemList":
-                        continue
-                    for item in data.get("itemListElement", []):
-                        ev = item.get("item", item)
-                        event_url = ev.get("url", "").strip()
-                        if not event_url or event_url in seen:
-                            continue
-                        seen.add(event_url)
-
-                        title = (ev.get("name") or "").strip()
-                        if not title:
-                            continue
-
-                        # Skip online-only events
-                        mode = ev.get("eventAttendanceMode", "")
-                        if "Online" in mode:
-                            continue
-
-                        loc_data = ev.get("location") or {}
-                        addr = loc_data.get("address") or {}
-                        location = ", ".join(filter(None, [
-                            loc_data.get("name", ""),
-                            addr.get("addressLocality", ""),
-                            addr.get("addressRegion", ""),
-                        ])) or city_slug.title()
-
-                        organizer_data = ev.get("organizer") or {}
-                        organizer = (
-                            organizer_data.get("name", "")
-                            if isinstance(organizer_data, dict) else ""
-                        )
-                        events.append({
-                            "id": _make_id(event_url),
-                            "source": "eventbrite",
-                            "title": title,
-                            "description": _clean_html(ev.get("description", ""))[:2000],
-                            "start_date": ev.get("startDate", ""),
-                            "location": location,
-                            "url": event_url,
-                            "organizer": organizer,
-                            "status": "new",
-                            "relevance_score": None,
-                            "relevance_reason": "",
-                        })
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"  Eventbrite error ({category}): {e}")
-
-    return events
+    """Eventbrite scraping is currently blocked by their WAF (returns 405).
+    Returns an empty list until they provide a public API or the block is lifted.
+    Use Meetup and Luma for local events in the meantime."""
+    return []
 
 
 # ── Main entry point ─────────────────────────────────────────────

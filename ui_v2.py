@@ -1991,7 +1991,8 @@ elif page == "Events":
                     )
                     st.stop()
 
-            st.success(f"✓ {len(scored)} events loaded. Showing {ev_min_score}+ relevance below.")
+            st.success(f"✓ {len(scored)} events loaded from Meetup + Luma. Showing {ev_min_score}+ relevance below.")
+            st.caption("Note: Eventbrite is temporarily unavailable — their site now blocks automated requests. Meetup and Luma are active.")
             st.rerun()
 
     # ── Load saved events ─────────────────────────────────────────
@@ -2004,7 +2005,7 @@ elif page == "Events":
 
     try:
         events = get_events(user_id=_USER_ID, min_score=ev_min_score,
-                            status_filter=["new", "interested", "attending"])
+                            status_filter=["new", "interested", "attending", "skipped"])
     except RuntimeError:
         st.warning(
             "Events database not configured yet. "
@@ -2039,77 +2040,87 @@ elif page == "Events":
         events = [e for e in events if q in (e.get("title","") + e.get("description","") +
                                               e.get("organizer","")).lower()]
 
-    # Sort by relevance score desc, then by date asc as tiebreaker
-    events.sort(key=lambda e: (-(e.get("relevance_score") or 0), e.get("start_date") or ""))
+    # ── Status tabs ──────────────────────────────────────────────
+    _n_all        = len([e for e in events if e.get("status") != "skipped"])
+    _n_interested = len([e for e in events if e.get("status") == "interested"])
+    _n_attending  = len([e for e in events if e.get("status") == "attending"])
+    _status_tab, _interested_tab, _attending_tab = st.tabs([
+        f"All  ({_n_all})",
+        f"Interested  ({_n_interested})",
+        f"Attending  ({_n_attending})",
+    ])
 
-    st.markdown(f'<div class="section-label">{len(events)} events · sorted by relevance</div>',
-                unsafe_allow_html=True)
-
-    # ── Event cards ───────────────────────────────────────────────
-    STATUS_COLORS = {"new": "#4A4A45", "interested": "#f5c518", "attending": "#D4FF3A"}
-
-    for ev in events:
-        score = ev.get("relevance_score") or 0
-        icon = "🟢" if score >= 7 else "🟡" if score >= 4 else "🔴"
-        status = ev.get("status", "new")
-        status_dot = f'<span style="color:{STATUS_COLORS.get(status,"#4A4A45")};font-size:10px">● {status.upper()}</span>'
-
-        # Parse date for display
-        raw_date = ev.get("start_date", "")
-        try:
-            from datetime import datetime
-            dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
-            date_str = dt.strftime("%a %b %-d · %-I:%M %p")
-        except Exception:
-            date_str = raw_date[:16] if raw_date else "Date TBD"
-
-        with st.expander(
-            f"{icon}  {score}/10  —  {ev.get('title','')[:60]}",
-            expanded=False,
-        ):
-            top_col, btn_col = st.columns([3, 1])
-
-            with top_col:
-                st.markdown(
-                    f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;'
-                    f'color:#8B8B85;margin-bottom:8px">'
-                    f'📅 {date_str} &nbsp;·&nbsp; '
-                    f'📍 {ev.get("location","")[:40]} &nbsp;·&nbsp; '
-                    f'👥 {ev.get("organizer","")[:35]}'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                if ev.get("relevance_reason"):
-                    st.caption(f"Relevance: {ev['relevance_reason']}")
-                if ev.get("description"):
+    def _render_events(ev_list):
+        if not ev_list:
+            st.markdown(
+                '<div class="pipeline-card" style="text-align:center;padding:24px">'
+                '<p>No events in this filter.</p></div>',
+                unsafe_allow_html=True,
+            )
+            return
+        # Sort by relevance score desc, then date asc
+        ev_list = sorted(ev_list, key=lambda e: (-(e.get("relevance_score") or 0), e.get("start_date") or ""))
+        st.markdown(f'<div class="section-label">{len(ev_list)} events · sorted by relevance</div>',
+                    unsafe_allow_html=True)
+        STATUS_COLORS = {"new": "#4A4A45", "interested": "#f5c518", "attending": "#D4FF3A"}
+        for ev in ev_list:
+            score  = ev.get("relevance_score") or 0
+            status = ev.get("status", "new")
+            status_dot = f'<span style="color:{STATUS_COLORS.get(status,"#4A4A45")};font-size:10px">● {status.upper()}</span>'
+            raw_date = ev.get("start_date", "")
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                date_str = dt.strftime("%a %b %-d · %-I:%M %p")
+            except Exception:
+                date_str = raw_date[:16] if raw_date else "Date TBD"
+            with st.expander(f"{score}/10  —  {ev.get('title','')[:60]}", expanded=False):
+                top_col, btn_col = st.columns([3, 1])
+                with top_col:
                     st.markdown(
-                        f'<div class="cover-letter" style="max-height:140px;overflow-y:auto;'
-                        f'font-size:11px">{ev["description"][:600]}</div>',
+                        f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;'
+                        f'color:#8B8B85;margin-bottom:8px">'
+                        f'{date_str} &nbsp;·&nbsp; '
+                        f'{ev.get("location","")[:40]} &nbsp;·&nbsp; '
+                        f'{ev.get("organizer","")[:35]}'
+                        f'</div>',
                         unsafe_allow_html=True,
                     )
-                if ev.get("url"):
-                    st.markdown(f"[View event ↗]({ev['url']})")
+                    if ev.get("relevance_reason"):
+                        st.caption(f"Relevance: {ev['relevance_reason']}")
+                    if ev.get("description"):
+                        st.markdown(
+                            f'<div class="cover-letter" style="max-height:140px;overflow-y:auto;'
+                            f'font-size:11px">{ev["description"][:600]}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    if ev.get("url"):
+                        st.markdown(f"[View event ↗]({ev['url']})")
+                with btn_col:
+                    eid = ev["id"]
+                    st.markdown(f'<div style="margin-bottom:8px">{status_dot}</div>',
+                                unsafe_allow_html=True)
+                    if st.button("Interested", key=f"ev_int_{eid}", use_container_width=True):
+                        update_event_status(eid, "interested", user_id=_USER_ID)
+                        st.rerun()
+                    if st.button("Attending", key=f"ev_att_{eid}", use_container_width=True,
+                                 type="primary"):
+                        update_event_status(eid, "attending", user_id=_USER_ID)
+                        st.rerun()
+                    if st.button("Skip", key=f"ev_skip_{eid}", use_container_width=True):
+                        update_event_status(eid, "skipped", user_id=_USER_ID)
+                        st.rerun()
 
-            with btn_col:
-                eid = ev["id"]
-                st.markdown(
-                    f'<div style="margin-bottom:8px">{status_dot}</div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button("Interested", key=f"ev_int_{eid}", use_container_width=True):
-                    update_event_status(eid, "interested", user_id=_USER_ID)
-                    st.rerun()
-                if st.button("Attending", key=f"ev_att_{eid}", use_container_width=True,
-                             type="primary"):
-                    update_event_status(eid, "attending", user_id=_USER_ID)
-                    st.rerun()
-                if st.button("Skip", key=f"ev_skip_{eid}", use_container_width=True):
-                    update_event_status(eid, "skipped", user_id=_USER_ID)
-                    st.rerun()
+    with _status_tab:
+        _render_events([e for e in events if e.get("status") != "skipped"])
+    with _interested_tab:
+        _render_events([e for e in events if e.get("status") == "interested"])
+    with _attending_tab:
+        _render_events([e for e in events if e.get("status") == "attending"])
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want networking tips or event prep help?</div>', unsafe_allow_html=True)
-    if st.button("💬 Ask Job Pal", key="cta_asst_events", type="secondary"):
+    if st.button("Ask Job Pal", key="cta_asst_events", type="secondary"):
         st.session_state["_nav_page"] = "Assistant"
         st.rerun()
 
