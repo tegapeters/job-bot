@@ -33,13 +33,6 @@ CITY_MEETUP_GROUPS: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-# Eventbrite categories to scrape per city slug
-EVENTBRITE_CATEGORIES = [
-    "professional-networking",
-    "technology",
-    "business",
-]
-
 # Words in Meetup event titles that signal virtual/global cross-posts
 _VIRTUAL_SIGNALS = frozenset([
     "virtual", "global", "worldwide", "online", "webinar", "zoom", "around the world",
@@ -262,114 +255,92 @@ def _fetch_luma_description(event_url: str) -> str:
         return ""
 
 
-# ── Eventbrite ────────────────────────────────────────────────────
+# ── AllEvents.in ─────────────────────────────────────────────────
+# Replaces Eventbrite (which blocks all server-side requests via Cloudflare WAF).
+# AllEvents.in aggregates from Eventbrite, Luma, Meetup, and others.
 
-def scrape_eventbrite_city(city_slug: str = "houston", state: str = "tx") -> list[dict]:
-    """Fetch professional/tech events via the Eventbrite Discovery API.
+_AE_CITY_SLUG: dict[str, str] = {
+    "houston": "houston", "austin": "austin", "dallas": "dallas",
+    "san antonio": "san-antonio", "new york": "new-york-city",
+    "new york city": "new-york-city", "nyc": "new-york-city",
+    "los angeles": "los-angeles", "la": "los-angeles",
+    "chicago": "chicago", "atlanta": "atlanta", "seattle": "seattle",
+    "san francisco": "san-francisco", "sf": "san-francisco",
+    "miami": "miami", "boston": "boston", "denver": "denver",
+    "washington dc": "washington-dc", "dc": "washington-dc",
+}
 
-    Requires EVENTBRITE_API_KEY in env / Streamlit secrets.
-    Get a free key at https://www.eventbrite.com/platform/api/
-    """
-    # Read at call time (not import time) so st.secrets is fully loaded
-    from config import _secret
-    EVENTBRITE_API_KEY = _secret("EVENTBRITE_API_KEY")
-    if not EVENTBRITE_API_KEY:
-        print("  Eventbrite: EVENTBRITE_API_KEY not set — skipping.")
-        return []
+_AE_CATEGORIES = ["tech", "business"]
 
-    # Category IDs: 101 = Business & Professional, 102 = Science & Technology
-    CATEGORY_IDS = "101,102"
-    BASE = "https://www.eventbriteapi.com/v3/events/search/"
 
+def scrape_allevents_city(city_slug: str = "houston") -> list[dict]:
+    """Scrape upcoming tech/business events from AllEvents.in for a given city."""
+    from bs4 import BeautifulSoup
+
+    ae_city = _AE_CITY_SLUG.get(city_slug.lower(), city_slug.lower())
     events: list[dict] = []
     seen: set[str] = set()
 
-    # Build a human-readable city string for the location query
-    city_label = city_slug.replace("-", " ").title()
-    state_label = state.upper()
-    address = f"{city_label}, {state_label}"
-
-    from datetime import datetime, timezone, timedelta
-    # Look ahead 60 days
-    now = datetime.now(timezone.utc)
-    start_min = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    start_max = (now + timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    params = {
-        "token":                  EVENTBRITE_API_KEY,
-        "location.address":       address,
-        "location.within":        "30mi",
-        "categories":             CATEGORY_IDS,
-        "start_date.range_start": start_min,
-        "start_date.range_end":   start_max,
-        "expand":                 "venue,organizer",
-        "sort_by":                "date",
-        "page_size":              50,
-    }
-
-    page = 1
-    while page <= 3:   # cap at 3 pages (150 events max)
-        params["page"] = page
-        try:
-            r = requests.get(BASE, params=params, headers=HEADERS, timeout=15)
-            if r.status_code != 200:
-                print(f"  Eventbrite API error: {r.status_code} — {r.text[:200]}")
+    for category in _AE_CATEGORIES:
+        for pg in range(1, 4):
+            url = f"https://allevents.in/{ae_city}/{category}"
+            if pg > 1:
+                url += f"?page={pg}"
+            try:
+                r = requests.get(url, headers=HEADERS, timeout=12)
+                if r.status_code != 200:
+                    break
+            except Exception as e:
+                print(f"[events] AllEvents error: {e}")
                 break
-            data = r.json()
-        except Exception as e:
-            print(f"  Eventbrite API error: {e}")
-            break
 
-        for ev in data.get("events", []):
-            # Skip online-only events
-            if ev.get("is_online_event"):
-                continue
+            soup = BeautifulSoup(r.content, "html.parser")
+            cards = soup.find_all(attrs={"data-name": True, "data-link": True})
+            if not cards:
+                break
 
-            event_url = ev.get("url", "").strip()
-            if not event_url or event_url in seen:
-                continue
-            seen.add(event_url)
+            for card in cards:
+                event_url = card.get("data-link", "").strip()
+                if not event_url or event_url in seen:
+                    continue
+                seen.add(event_url)
 
-            title = (ev.get("name") or {}).get("text", "").strip()
-            if not title:
-                continue
+                # Card text format: "Day, DD Mon, YYYY - HH:MM AM | Title | Venue | ..."
+                raw_text = card.get_text(separator=" | ", strip=True)
+                parts = [p.strip() for p in raw_text.split(" | ") if p.strip()]
 
-            desc = (ev.get("description") or {}).get("text", "") or ""
+                # Date is the first part; title comes from data-name (cleaner)
+                date_text = parts[0] if parts else ""
+                title = card.get("data-name", "").strip()
+                if not title and len(parts) > 1:
+                    title = parts[1]
+                if not title:
+                    continue
 
-            start_utc = (ev.get("start") or {}).get("utc", "")
+                # Venue is typically 3rd part; skip parts that look like prices/interest counts
+                location = ""
+                for part in parts[2:]:
+                    if re.search(r"\d+\+?\s+(Interested|Going)|USD|Free|\$", part, re.I):
+                        continue
+                    if len(part) > 2:
+                        location = part
+                        break
+                if not location:
+                    location = city_slug.title()
 
-            venue = ev.get("venue") or {}
-            addr  = venue.get("address") or {}
-            location = (
-                addr.get("localized_address_display")
-                or ", ".join(filter(None, [
-                    venue.get("name", ""),
-                    addr.get("city", ""),
-                    addr.get("region", ""),
-                ]))
-                or address
-            )
-
-            organizer = (ev.get("organizer") or {}).get("name", "")
-
-            events.append({
-                "id":               _make_id(event_url),
-                "source":           "eventbrite",
-                "title":            title,
-                "description":      desc[:2000],
-                "start_date":       start_utc,
-                "location":         location,
-                "url":              event_url,
-                "organizer":        organizer,
-                "status":           "new",
-                "relevance_score":  None,
-                "relevance_reason": "",
-            })
-
-        pagination = data.get("pagination", {})
-        if not pagination.get("has_more_items"):
-            break
-        page += 1
+                events.append({
+                    "id":               _make_id(event_url),
+                    "source":           "allevents",
+                    "title":            title[:200],
+                    "description":      "",
+                    "start_date":       date_text,
+                    "location":         location[:200],
+                    "url":              event_url,
+                    "organizer":        "",
+                    "status":           "new",
+                    "relevance_score":  None,
+                    "relevance_reason": "",
+                })
 
     return events
 
@@ -417,24 +388,17 @@ def scrape_events(
         except Exception as ex:
             print(f"[events] Luma ERROR: {ex}")
 
-        if slugs:
-            eb_slug = slugs["eb_slug"]
-            eb_state = slugs["eb_state"]
-        else:
-            print(f"[events] Eventbrite — no config for '{city_key}', skipping")
-            eb_slug = eb_state = None
-
-        if eb_slug:
-            print(f"[events] Eventbrite — {eb_slug}/{eb_state}...")
-            eb_before = len(all_events)
-            try:
-                for e in scrape_eventbrite_city(city_slug=eb_slug, state=eb_state):
-                    if e["id"] not in seen:
-                        seen.add(e["id"])
-                        all_events.append(e)
-                print(f"[events] Eventbrite → {len(all_events) - eb_before} events")
-            except Exception as ex:
-                print(f"[events] Eventbrite ERROR: {ex}")
+        ae_slug = _AE_CITY_SLUG.get(city_key, city_key.replace(" ", "-"))
+        print(f"[events] AllEvents — {ae_slug}...")
+        ae_before = len(all_events)
+        try:
+            for e in scrape_allevents_city(city_slug=ae_slug):
+                if e["id"] not in seen:
+                    seen.add(e["id"])
+                    all_events.append(e)
+            print(f"[events] AllEvents → {len(all_events) - ae_before} events")
+        except Exception as ex:
+            print(f"[events] AllEvents ERROR: {ex}")
 
     print(f"[events] Total unique: {len(all_events)}")
     return all_events
