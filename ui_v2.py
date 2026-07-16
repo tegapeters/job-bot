@@ -27,7 +27,7 @@ from config import REVIEW_MIN_SCORE
 # ── Page config ────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Job Pal · techturi",
-    page_icon="🤖",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="auto",
 )
@@ -537,15 +537,15 @@ with st.sidebar:
         st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#ff6b6b;letter-spacing:0.15em;padding:0 20px 12px">⚠ NO RESUME — START HERE</div>', unsafe_allow_html=True)
 
     _nav_map = {
-        "⚙  Setup":              "Setup",
-        "▶  Run Pipeline":       "Run Pipeline",
-        "📋 Review Queue":       "Review Queue",
-        "✅ Applied":            "Applied",
-        "💼 Interviews":         "Interviews",
-        "🗓  Events":            "Events",
-        "📊 Dashboard":          "Dashboard",
-        "🗂  All Applications":  "All Applications",
-        "🤖 Assistant":          "Assistant",
+        "Setup":              "Setup",
+        "Run Pipeline":       "Run Pipeline",
+        "Review Queue":       "Review Queue",
+        "Applied":            "Applied",
+        "Interviews":         "Interviews",
+        "Events":             "Events",
+        "Dashboard":          "Dashboard",
+        "All Applications":   "All Applications",
+        "Assistant":          "Assistant",
     }
     _nav_labels   = list(_nav_map.keys())
     _nav_internal = list(_nav_map.values())
@@ -603,11 +603,10 @@ def _days_in_queue(job: dict) -> int | None:
 def job_card(job, key_prefix, next_statuses, expanded=False):
     """Render a full job card with details, cover letter, and status controls."""
     score = job.get("score") or 0
-    icon = "🟢" if score >= 8 else "🟡" if score >= 6 else "🔴"
     days = _days_in_queue(job)
     days_label = f"  ·  {days}d" if days is not None else ""
     with st.expander(
-        f"{icon}  {score}/10  —  {job['title'].replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')} @ {job.get('company', '?')}{days_label}",
+        f"{score}/10  —  {job['title'].replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')} @ {job.get('company', '?')}{days_label}",
         expanded=expanded,
     ):
         hint = job.get("_personal_hint")
@@ -615,15 +614,15 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
         if hint:
             # Translate internal reasons into plain English
             friendly = (hint
-                .replace("company you engaged positively before", "✅ Company you liked before")
-                .replace("company you skipped/rejected before", "⚠️ Company you passed on before")
-                .replace("source with past positive outcomes", "📌 Strong source for you")
-                .replace("title overlap with roles you liked", "👍 Matches roles you've gone for")
+                .replace("company you engaged positively before", "Company you liked before")
+                .replace("company you skipped/rejected before", "Company you passed on before")
+                .replace("source with past positive outcomes", "Strong source for you")
+                .replace("title overlap with roles you liked", "Matches roles you've gone for")
             )
             # Replace "title contains patterns you skip (x, y)" with friendlier form
             friendly = re.sub(
                 r"title contains patterns you skip \(([^)]+)\)",
-                lambda m: f"⏭️ You tend to skip {m.group(1)} roles",
+                lambda m: f"You tend to skip {m.group(1)} roles",
                 friendly
             )
             st.caption(friendly)
@@ -646,7 +645,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             salary_range = job.get("salary_range") or _extract_salary_from_text(job.get("description", ""))
             salary_match = job.get("salary_match", "Unknown")
             if salary_range:
-                match_label = {"Yes": "✅", "No": "❌", "Unknown": "—"}.get(salary_match, "—")
+                match_label = {"Yes": "✓", "No": "✗", "Unknown": "—"}.get(salary_match, "—")
                 st.markdown(f"**Salary:** {salary_range} {match_label}")
             else:
                 st.markdown(f"**Salary:** Not listed — match: {salary_match}")
@@ -705,7 +704,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
         _company_name = job.get("company", "").strip()
         if _company_name:
             st.markdown('<div class="section-label" style="margin-top:16px">Company Research</div>', unsafe_allow_html=True)
-            _show_cr = st.toggle(f"🏢 {_company_name} — history, funding & about", key=f"cr_toggle_{job['id']}", value=False)
+            _show_cr = st.toggle(f"{_company_name} — history, funding & about", key=f"cr_toggle_{job['id']}", value=False)
             if _show_cr:
                 from researcher import research_company, load_cached
                 _cr_key = f"_cr_{job['id']}"
@@ -736,7 +735,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                     )
                 if not any(_cr.get(k) for k in ("summary", "website", "funding", "about_text")):
                     st.caption("No research data found for this company.")
-                if st.button("🔄 Refresh research", key=f"cr_refresh_{job['id']}", type="secondary"):
+                if st.button("Refresh research", key=f"cr_refresh_{job['id']}", type="secondary"):
                     from researcher import research_company as _rc_force
                     with st.spinner("Re-fetching…"):
                         st.session_state[_cr_key] = _rc_force(
@@ -761,7 +760,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 buf.seek(0)
                 safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", f"{job.get('company','')}_{job.get('title','')}").strip("_")
                 st.download_button(
-                    "⬇ .docx",
+                    "Download .docx",
                     data=buf,
                     file_name=f"cover_letter_{safe_name}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -771,7 +770,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 f'<div class="cover-letter">{job["cover_letter"]}</div>',
                 unsafe_allow_html=True,
             )
-            if st.toggle("📋 Copy-ready (plain text)", key=f"cl_copy_{job['id']}", value=False):
+            if st.toggle("Copy-ready (plain text)", key=f"cl_copy_{job['id']}", value=False):
                 _cl_clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', job["cover_letter"])
                 _cl_clean = re.sub(r'\*([^*]+)\*', r'\1', _cl_clean)
                 _cl_clean = re.sub(r'\n{3,}', '\n\n', _cl_clean).strip()
@@ -779,7 +778,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
 
         # ── Questionnaire Helper (conversational) ─────────────────
         st.markdown('<div class="section-label" style="margin-top:16px">Questionnaire Helper</div>', unsafe_allow_html=True)
-        _show_q = st.toggle("📋 Draft answers to application questions", key=f"q_toggle_{job['id']}", value=bool(st.session_state.get(f"q_chat_{job['id']}")))
+        _show_q = st.toggle("Draft answers to application questions", key=f"q_toggle_{job['id']}", value=bool(st.session_state.get(f"q_chat_{job['id']}")))
         if _show_q:
             q_chat_key = f"q_chat_{job['id']}"
             if q_chat_key not in st.session_state:
@@ -833,7 +832,7 @@ Instructions:
                         placeholder="1. Why do you want to work at this company?\n2. Describe a time you used data to drive a decision.\n3. ...",
                         height=120,
                     )
-                    if st.button("✍️ Draft answers", key=f"q_start_{job['id']}", type="secondary"):
+                    if st.button("Draft answers", key=f"q_start_{job['id']}", type="secondary"):
                         if not questions_init.strip():
                             st.warning("Paste some questions first.")
                         else:
@@ -844,12 +843,12 @@ Instructions:
                     _ac = _anthropic.Anthropic()
 
                     for msg in q_history:
-                        avatar = "👤" if msg["role"] == "user" else "🤖"
+                        avatar = "user" if msg["role"] == "user" else "assistant"
                         with st.chat_message(msg["role"], avatar=avatar):
                             st.markdown(msg["content"])
 
                     if q_history and q_history[-1]["role"] == "user":
-                        with st.chat_message("assistant", avatar="🤖"):
+                        with st.chat_message("assistant"):
                             def _q_gen():
                                 with _ac.messages.stream(
                                     model="claude-sonnet-4-6",
@@ -870,7 +869,7 @@ Instructions:
                         None,
                     )
                     if _last_answer:
-                        if st.toggle("📋 Copy-ready answers (plain text)", key=f"q_copy_{job['id']}", value=False):
+                        if st.toggle("Copy-ready answers (plain text)", key=f"q_copy_{job['id']}", value=False):
                             _clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', _last_answer)
                             _clean = re.sub(r'\*([^*]+)\*', r'\1', _clean)
                             _clean = re.sub(r'^#{1,6}\s+', '', _clean, flags=re.MULTILINE)
@@ -1016,17 +1015,17 @@ def _render_assistant_panel(page_key: str, page_context: str = "") -> None:
                     yield text
         return _gen
 
-    label = f"Ask the Assistant {'💬' if has_history else '🤖'}"
+    label = "Ask the Assistant"
     with st.expander(label, expanded=has_history):
         # Render history
         for msg in history:
-            avatar = "👤" if msg["role"] == "user" else "🤖"
+            avatar = "user" if msg["role"] == "user" else "assistant"
             with st.chat_message(msg["role"], avatar=avatar):
                 st.markdown(msg["content"])
 
         # Stream any pending unanswered user message
         if history and history[-1]["role"] == "user":
-            with st.chat_message("assistant", avatar="🤖"):
+            with st.chat_message("assistant"):
                 response = st.write_stream(_stream(history))
             st.session_state[hist_key].append({"role": "assistant", "content": response})
 
@@ -1419,7 +1418,7 @@ elif page == "Dashboard":
           <p>Run the pipeline to start scoring jobs against your resume.</p>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("▶ Run Pipeline", type="primary"):
+        if st.button("Run Pipeline", type="primary"):
             st.session_state["_nav_page"] = "Run Pipeline"
             st.rerun()
         st.stop()
@@ -1506,7 +1505,7 @@ elif page == "Dashboard":
 
     _da, _db = st.columns([1, 4])
     with _da:
-        if st.button("💬 Ask Job Pal", key="cta_asst_dashboard", type="secondary"):
+        if st.button("Ask Job Pal", key="cta_asst_dashboard", type="secondary"):
             st.session_state["_nav_page"] = "Assistant"
             st.rerun()
 
@@ -1539,7 +1538,7 @@ elif page == "Review Queue":
         """, unsafe_allow_html=True)
         _qa, _qb = st.columns([1, 4])
         with _qa:
-            if st.button("▶ Run Pipeline", type="primary"):
+            if st.button("Run Pipeline", type="primary"):
                 st.session_state["_nav_page"] = "Run Pipeline"
                 st.rerun()
         st.stop()
@@ -1594,13 +1593,13 @@ elif page == "Review Queue":
         if ctx.get("has_signals"):
             pills = []
             if ctx.get("pos_companies"):
-                pills.append(f"👍 Prefers companies: {', '.join(sorted(ctx['pos_companies'])[:3])}")
+                pills.append(f"Prefers companies: {', '.join(sorted(ctx['pos_companies'])[:3])}")
             if ctx.get("neg_companies"):
-                pills.append(f"⚠️ Avoids companies: {', '.join(sorted(ctx['neg_companies'])[:3])}")
+                pills.append(f"Avoids companies: {', '.join(sorted(ctx['neg_companies'])[:3])}")
             if ctx.get("title_tokens"):
-                pills.append(f"✅ Likes roles with: {', '.join(sorted(ctx['title_tokens'])[:5])}")
+                pills.append(f"Likes roles with: {', '.join(sorted(ctx['title_tokens'])[:5])}")
             if ctx.get("neg_title_tokens"):
-                pills.append(f"⏭️ Tends to skip: {', '.join(sorted(ctx['neg_title_tokens'])[:5])} roles")
+                pills.append(f"Tends to skip: {', '.join(sorted(ctx['neg_title_tokens'])[:5])} roles")
             if pills:
                 with st.expander("What Job Pal has learned about you", expanded=False):
                     for p in pills:
@@ -1639,7 +1638,7 @@ elif page == "Review Queue":
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want to talk through which jobs to apply to?</div>', unsafe_allow_html=True)
-    if st.button("💬 Ask Job Pal", key="cta_asst_queue", type="secondary"):
+    if st.button("Ask Job Pal", key="cta_asst_queue", type="secondary"):
         st.session_state["_nav_page"] = "Assistant"
         st.rerun()
 
@@ -1680,7 +1679,7 @@ elif page == "Applied":
     if _gmail_on and _gmail_email and _gmail_pw:
         _scan_col, _ = st.columns([2, 5])
         with _scan_col:
-            if st.button("📬 Scan Gmail for rejections", type="secondary", use_container_width=True):
+            if st.button("Scan Gmail for rejections", type="secondary", use_container_width=True):
                 with st.spinner("Scanning inbox…"):
                     try:
                         from rejection_scanner import scan_inbox
@@ -1696,14 +1695,14 @@ elif page == "Applied":
         _matches = st.session_state.get("_rejection_matches")
         if _matches is not None:
             if not _matches:
-                st.success("No rejection emails found for your applied jobs. 🎉")
+                st.success("No rejection emails found for your applied jobs.")
             else:
                 st.warning(f"Found **{len(_matches)}** possible rejection email{'s' if len(_matches) != 1 else ''}. Review and confirm below.")
                 _to_mark: list[str] = []
                 for _m in _matches:
                     _j = _m["job"]
                     _conf = int(_m["confidence"] * 100)
-                    with st.expander(f"{'🔴' if _conf >= 80 else '🟡'} {_j.get('title')} @ {_j.get('company')}  —  {_conf}% match"):
+                    with st.expander(f"{_j.get('title')} @ {_j.get('company')}  —  {_conf}% match"):
                         st.markdown(f"**From:** {_m['email_from']}")
                         st.markdown(f"**Subject:** {_m['email_subject']}")
                         st.markdown(f"**Date:** {_m['email_date']}")
@@ -1713,7 +1712,7 @@ elif page == "Applied":
                             _to_mark.append(_j["id"])
 
                 if _to_mark:
-                    if st.button(f"✅ Mark {len(_to_mark)} job{'s' if len(_to_mark) != 1 else ''} as Rejected", type="primary"):
+                    if st.button(f"Mark {len(_to_mark)} job{'s' if len(_to_mark) != 1 else ''} as Rejected", type="primary"):
                         from tracker import update_status
                         for _jid in _to_mark:
                             update_status(_jid, "rejected", user_id=_USER_ID)
@@ -1721,7 +1720,7 @@ elif page == "Applied":
                         st.session_state.pop("_rejection_matches", None)
                         st.rerun()
     elif _gmail_on and (not _gmail_email or not _gmail_pw):
-        st.caption("📬 Gmail scanning is enabled — add your credentials on the Setup page to activate it.")
+        st.caption("Gmail scanning is enabled — add your credentials on the Setup page to activate it.")
 
     # ── Filters ──────────────────────────────────────────────────────
     f1, f2, f3 = st.columns([3, 2, 1])
@@ -1778,7 +1777,7 @@ elif page == "Interviews":
         """, unsafe_allow_html=True)
         _ia, _ib = st.columns([1,4])
         with _ia:
-            if st.button("✅ Go to Applied", type="secondary"):
+            if st.button("Go to Applied", type="secondary"):
                 st.session_state["_nav_page"] = "Applied"
                 st.rerun()
         st.stop()
@@ -1793,7 +1792,7 @@ elif page == "Interviews":
 
     _prep_a, _prep_b = st.columns([4, 1])
     with _prep_b:
-        if st.button("🤖 Prep with AI", type="secondary", use_container_width=True):
+        if st.button("Prep with AI", type="secondary", use_container_width=True):
             st.session_state["_nav_page"] = "Assistant"
             st.rerun()
 
@@ -1895,7 +1894,7 @@ elif page == "All Applications":
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Need help with a follow-up or status update?</div>', unsafe_allow_html=True)
-    if st.button("💬 Ask Job Pal", key="cta_asst_all_apps", type="secondary"):
+    if st.button("Ask Job Pal", key="cta_asst_all_apps", type="secondary"):
         st.session_state["_nav_page"] = "Assistant"
         st.rerun()
 
@@ -2050,7 +2049,6 @@ elif page == "Events":
 
     for ev in events:
         score = ev.get("relevance_score") or 0
-        icon = "🟢" if score >= 7 else "🟡" if score >= 4 else "🔴"
         status = ev.get("status", "new")
         status_dot = f'<span style="color:{STATUS_COLORS.get(status,"#4A4A45")};font-size:10px">● {status.upper()}</span>'
 
@@ -2064,7 +2062,7 @@ elif page == "Events":
             date_str = raw_date[:16] if raw_date else "Date TBD"
 
         with st.expander(
-            f"{icon}  {score}/10  —  {ev.get('title','')[:60]}",
+            f"{score}/10  —  {ev.get('title','')[:60]}",
             expanded=False,
         ):
             top_col, btn_col = st.columns([3, 1])
@@ -2073,9 +2071,9 @@ elif page == "Events":
                 st.markdown(
                     f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;'
                     f'color:#8B8B85;margin-bottom:8px">'
-                    f'📅 {date_str} &nbsp;·&nbsp; '
-                    f'📍 {ev.get("location","")[:40]} &nbsp;·&nbsp; '
-                    f'👥 {ev.get("organizer","")[:35]}'
+                    f'{date_str} &nbsp;·&nbsp; '
+                    f'{ev.get("location","")[:40]} &nbsp;·&nbsp; '
+                    f'{ev.get("organizer","")[:35]}'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -2109,7 +2107,7 @@ elif page == "Events":
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want networking tips or event prep help?</div>', unsafe_allow_html=True)
-    if st.button("💬 Ask Job Pal", key="cta_asst_events", type="secondary"):
+    if st.button("Ask Job Pal", key="cta_asst_events", type="secondary"):
         st.session_state["_nav_page"] = "Assistant"
         st.rerun()
 
@@ -2126,7 +2124,7 @@ elif page == "Run Pipeline":
           <p>Go to Setup and paste or upload your resume first — the pipeline uses it to score every job for fit.</p>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("⚙ Go to Setup", type="primary"):
+        if st.button("Go to Setup", type="primary"):
             st.session_state["_nav_page"] = "Setup"
             st.rerun()
         st.stop()
@@ -2167,15 +2165,15 @@ elif page == "Run Pipeline":
         )
 
     _mode_info = {
-        "embed":  "🟢 TF-IDF similarity + `claude-sonnet-4-6` for borderline scores. Cheapest. Recommended.",
-        "hybrid": "🟡 Keyword pre-filter, then Claude for anything above the threshold.",
-        "claude": "🔵 Claude scores every job — most accurate, most API cost.",
+        "embed":  "TF-IDF similarity + `claude-sonnet-4-6` for borderline scores. Cheapest. Recommended.",
+        "hybrid": "Keyword pre-filter, then Claude for anything above the threshold.",
+        "claude": "Claude scores every job — most accurate, most API cost.",
         "cheap":  "⚪ Keyword heuristic only. No LLM, no API calls.",
     }
     st.caption(_mode_info.get(scoring_mode, ""))
 
     # ── Advanced options ──────────────────────────────────────────
-    with st.expander("⚙ Advanced options"):
+    with st.expander("Advanced options"):
         _adv1, _adv2 = st.columns(2)
         with _adv1:
             run_label = st.text_input("Run label", value="", placeholder="e.g. embed-jul15")
@@ -2185,7 +2183,7 @@ elif page == "Run Pipeline":
             run_note = st.text_area("Run note", value="", height=100,
                                     placeholder="Notes on this run (query changes, observations).")
 
-    if st.button("▶ Run Pipeline", type="primary", use_container_width=True):
+    if st.button("Run Pipeline", type="primary", use_container_width=True):
         _pipeline_roles = st.session_state.get("target_roles") or []
         if not _pipeline_roles:
             st.error("No target roles set — go to **Setup** and add the roles you're looking for before running.")
@@ -2273,14 +2271,14 @@ elif page == "Run Pipeline":
             )
 
             progress.progress(100, text="Done.")
-            _timing_str = f"⏱ {stage_timings['total_s']:.0f}s  (score {stage_timings.get('pass2_s',0):.0f}s · enrich {stage_timings.get('enrich_s',0):.0f}s)"
+            _timing_str = f"{stage_timings['total_s']:.0f}s total  (score {stage_timings.get('pass2_s',0):.0f}s · enrich {stage_timings.get('enrich_s',0):.0f}s)"
             st.success(f"✓ Pipeline complete — **{len(qualified)} jobs scored {REVIEW_MIN_SCORE}+** · {_timing_str}")
 
             if qualified:
                 st.markdown('<div class="section-label" style="margin-top:20px">New qualified jobs</div>', unsafe_allow_html=True)
                 q_df = pd.DataFrame(qualified).reindex(columns=["title", "company", "score", "scored_by", "score_reason", "seniority"])
                 st.dataframe(q_df, use_container_width=True, hide_index=True)
-                if st.button("📋 Go to Review Queue", type="primary"):
+                if st.button("Go to Review Queue", type="primary"):
                     st.session_state["_nav_page"] = "Review Queue"
                     st.rerun()
 
@@ -2318,7 +2316,7 @@ elif page == "Run Pipeline":
                 )
             stale_sources = [f["source"] for f in freshness if f["status"] == "stale"]
             if stale_sources:
-                st.warning(f"⚠️ Stale data from: {', '.join(stale_sources)} — run the pipeline to refresh.")
+                st.warning(f"Stale data from: {', '.join(stale_sources)} — run the pipeline to refresh.")
         else:
             st.caption("No scrape data yet.")
     except Exception as e:
@@ -2479,7 +2477,7 @@ elif page == "Assistant":
             if _selected_job_label != "— select a job —":
                 _sel_idx = _job_options.index(_selected_job_label) - 1
                 _sel_job = _ctx_queue[_sel_idx]
-                if st.button("📎 Add job + company research", key="asst_inject_job", use_container_width=True):
+                if st.button("Add job + company research", key="asst_inject_job", use_container_width=True):
                     from researcher import research_company, load_cached
                     _co = _sel_job.get("company", "")
                     with st.spinner(f"Loading {_co} research…"):
@@ -2521,7 +2519,7 @@ elif page == "Assistant":
                     for text in stream.text_stream:
                         yield text
 
-            with st.chat_message("assistant", avatar="🤖"):
+            with st.chat_message("assistant"):
                 response = st.write_stream(_gen())
             return response
 
@@ -2549,7 +2547,7 @@ elif page == "Assistant":
 
         # Render history
         for msg in st.session_state["_chat_history"]:
-            avatar = "👤" if msg["role"] == "user" else "🤖"
+            avatar = "user" if msg["role"] == "user" else "assistant"
             with st.chat_message(msg["role"], avatar=avatar):
                 st.markdown(msg["content"])
 
