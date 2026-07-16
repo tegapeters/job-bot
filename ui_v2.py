@@ -1361,8 +1361,9 @@ if page == "Setup":
     <div class="pipeline-card" style="margin-bottom:16px">
       <p style="margin:0">
         <b>Optional.</b> Connect your job-application inbox so Job Pal can scan for
-        rejection emails and automatically surface them on the Applied page.
-        Your credentials are <b>never stored</b> — they live in memory for this session only.
+        rejection emails. When enabled, the Applied page scans automatically the first
+        time you visit each session. Your credentials are <b>never stored</b> — enter
+        them once per browser session and Job Pal handles the rest.
       </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1404,7 +1405,7 @@ if page == "Setup":
             if _gmail_email and _gmail_pw:
                 st.session_state["gmail_apply_email"] = _gmail_email.strip()
                 st.session_state["gmail_app_password"] = _gmail_pw.replace(" ", "").strip()
-                st.success("✓ Gmail credentials saved for this session. Go to Applied page to scan.")
+                st.success("✓ Gmail credentials saved. The Applied page will scan automatically when you visit it.")
             else:
                 st.warning("Enter both email and app password.")
 
@@ -1678,9 +1679,25 @@ elif page == "Applied":
     _gmail_pw     = st.session_state.get("gmail_app_password", "")
 
     if _gmail_on and _gmail_email and _gmail_pw:
+        # Auto-scan once per session on first Applied page load
+        _scan_done = "_rejection_matches" in st.session_state
+        if not _scan_done:
+            with st.spinner("📬 Scanning Gmail for rejection emails…"):
+                try:
+                    from rejection_scanner import scan_inbox
+                    _auto_matches = scan_inbox(_gmail_email, _gmail_pw, applied, lookback_days=90)
+                    st.session_state["_rejection_matches"] = _auto_matches
+                except ConnectionError as _ce:
+                    st.error(str(_ce))
+                    st.session_state["_rejection_matches"] = None
+                except Exception as _ex:
+                    st.error(f"Gmail scan failed: {_ex}")
+                    st.session_state["_rejection_matches"] = None
+
+        # Re-scan button for manual refresh
         _scan_col, _ = st.columns([2, 5])
         with _scan_col:
-            if st.button("📬 Scan Gmail for rejections", type="secondary", use_container_width=True):
+            if st.button("Re-scan Gmail", type="secondary", use_container_width=True):
                 with st.spinner("Scanning inbox…"):
                     try:
                         from rejection_scanner import scan_inbox
