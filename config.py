@@ -162,6 +162,9 @@ SUPABASE_KEY = _secret("SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SU
 EVENTS_SUPABASE_URL = _secret("EVENTS_SUPABASE_URL")
 EVENTS_SUPABASE_KEY = _secret("EVENTS_SUPABASE_KEY")
 
+# ── Eventbrite ─────────────────────────────────────────────────────
+EVENTBRITE_API_KEY = _secret("EVENTBRITE_API_KEY")
+
 # ── Anthropic ───────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = _secret("ANTHROPIC_API_KEY")
 

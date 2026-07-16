@@ -1991,8 +1991,7 @@ elif page == "Events":
                     )
                     st.stop()
 
-            st.success(f"✓ {len(scored)} events loaded from Meetup + Luma. Showing {ev_min_score}+ relevance below.")
-            st.caption("Note: Eventbrite is temporarily unavailable — their site now blocks automated requests. Meetup and Luma are active.")
+            st.success(f"✓ {len(scored)} events loaded. Showing {ev_min_score}+ relevance below.")
             st.rerun()
 
     # ── Load saved events ─────────────────────────────────────────

@@ -265,10 +265,111 @@ def _fetch_luma_description(event_url: str) -> str:
 # ── Eventbrite ────────────────────────────────────────────────────
 
 def scrape_eventbrite_city(city_slug: str = "houston", state: str = "tx") -> list[dict]:
-    """Eventbrite scraping is currently blocked by their WAF (returns 405).
-    Returns an empty list until they provide a public API or the block is lifted.
-    Use Meetup and Luma for local events in the meantime."""
-    return []
+    """Fetch professional/tech events via the Eventbrite Discovery API.
+
+    Requires EVENTBRITE_API_KEY in env / Streamlit secrets.
+    Get a free key at https://www.eventbrite.com/platform/api/
+    """
+    from config import EVENTBRITE_API_KEY
+    if not EVENTBRITE_API_KEY:
+        print("  Eventbrite: EVENTBRITE_API_KEY not set — skipping.")
+        return []
+
+    # Category IDs: 101 = Business & Professional, 102 = Science & Technology
+    CATEGORY_IDS = "101,102"
+    BASE = "https://www.eventbriteapi.com/v3/events/search/"
+
+    events: list[dict] = []
+    seen: set[str] = set()
+
+    # Build a human-readable city string for the location query
+    city_label = city_slug.replace("-", " ").title()
+    state_label = state.upper()
+    address = f"{city_label}, {state_label}"
+
+    from datetime import datetime, timezone, timedelta
+    # Look ahead 60 days
+    now = datetime.now(timezone.utc)
+    start_min = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    start_max = (now + timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    params = {
+        "token":                  EVENTBRITE_API_KEY,
+        "location.address":       address,
+        "location.within":        "30mi",
+        "categories":             CATEGORY_IDS,
+        "start_date.range_start": start_min,
+        "start_date.range_end":   start_max,
+        "expand":                 "venue,organizer",
+        "sort_by":                "date",
+        "page_size":              50,
+    }
+
+    page = 1
+    while page <= 3:   # cap at 3 pages (150 events max)
+        params["page"] = page
+        try:
+            r = requests.get(BASE, params=params, headers=HEADERS, timeout=15)
+            if r.status_code != 200:
+                print(f"  Eventbrite API error: {r.status_code} — {r.text[:200]}")
+                break
+            data = r.json()
+        except Exception as e:
+            print(f"  Eventbrite API error: {e}")
+            break
+
+        for ev in data.get("events", []):
+            # Skip online-only events
+            if ev.get("is_online_event"):
+                continue
+
+            event_url = ev.get("url", "").strip()
+            if not event_url or event_url in seen:
+                continue
+            seen.add(event_url)
+
+            title = (ev.get("name") or {}).get("text", "").strip()
+            if not title:
+                continue
+
+            desc = (ev.get("description") or {}).get("text", "") or ""
+
+            start_utc = (ev.get("start") or {}).get("utc", "")
+
+            venue = ev.get("venue") or {}
+            addr  = venue.get("address") or {}
+            location = (
+                addr.get("localized_address_display")
+                or ", ".join(filter(None, [
+                    venue.get("name", ""),
+                    addr.get("city", ""),
+                    addr.get("region", ""),
+                ]))
+                or address
+            )
+
+            organizer = (ev.get("organizer") or {}).get("name", "")
+
+            events.append({
+                "id":               _make_id(event_url),
+                "source":           "eventbrite",
+                "title":            title,
+                "description":      desc[:2000],
+                "start_date":       start_utc,
+                "location":         location,
+                "url":              event_url,
+                "organizer":        organizer,
+                "status":           "new",
+                "relevance_score":  None,
+                "relevance_reason": "",
+            })
+
+        pagination = data.get("pagination", {})
+        if not pagination.get("has_more_items"):
+            break
+        page += 1
+
+    return events
 
 
 # ── Main entry point ─────────────────────────────────────────────
