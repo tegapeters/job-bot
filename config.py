@@ -47,6 +47,11 @@ MIN_SALARY = 140_000  # USD
 # not through a global deny-list that breaks other professions.
 EXCLUDE_KEYWORDS = [
     "junior", "entry level", "entry-level", "intern",
+    # Domestic / private household staffing — never a corporate role
+    "domestic staffing", "household staff", "private household",
+    "domestic service", "domestic agency", "celebrity household",
+    "hnw family", "high net worth family", "housekeeper",
+    "nanny", "au pair", "butler", "private chef",
 ]
 
 # ── Resume / Background ─────────────────────────────────────────────
