@@ -270,7 +270,9 @@ def scrape_eventbrite_city(city_slug: str = "houston", state: str = "tx") -> lis
     Requires EVENTBRITE_API_KEY in env / Streamlit secrets.
     Get a free key at https://www.eventbrite.com/platform/api/
     """
-    from config import EVENTBRITE_API_KEY
+    # Read at call time (not import time) so st.secrets is fully loaded
+    from config import _secret
+    EVENTBRITE_API_KEY = _secret("EVENTBRITE_API_KEY")
     if not EVENTBRITE_API_KEY:
         print("  Eventbrite: EVENTBRITE_API_KEY not set — skipping.")
         return []
@@ -390,38 +392,49 @@ def scrape_events(
 
         groups = CITY_MEETUP_GROUPS.get(city_key, [])
         if groups:
-            print(f"  📅 Meetup — {c} ({len(groups)} groups)...")
+            print(f"[events] Meetup — {c} ({len(groups)} groups)...")
             meetup_before = len(all_events)
-            for e in scrape_meetup_groups(groups, city=c):
+            try:
+                for e in scrape_meetup_groups(groups, city=c):
+                    if e["id"] not in seen:
+                        seen.add(e["id"])
+                        all_events.append(e)
+                print(f"[events] Meetup → {len(all_events) - meetup_before} events")
+            except Exception as ex:
+                print(f"[events] Meetup ERROR: {ex}")
+        else:
+            print(f"[events] Meetup — no groups configured for '{city_key}'")
+
+        luma_slug = slugs["luma"] if slugs else city_key.replace(" ", "-")
+        print(f"[events] Luma — {luma_slug}...")
+        luma_before = len(all_events)
+        try:
+            for e in scrape_luma_city(luma_slug):
                 if e["id"] not in seen:
                     seen.add(e["id"])
                     all_events.append(e)
-            print(f"     → {len(all_events) - meetup_before} events")
-
-        luma_slug = slugs["luma"] if slugs else city_key.replace(" ", "-")
-        print(f"  📅 Luma — {luma_slug}...")
-        luma_before = len(all_events)
-        for e in scrape_luma_city(luma_slug):
-            if e["id"] not in seen:
-                seen.add(e["id"])
-                all_events.append(e)
-        print(f"     → {len(all_events) - luma_before} events")
+            print(f"[events] Luma → {len(all_events) - luma_before} events")
+        except Exception as ex:
+            print(f"[events] Luma ERROR: {ex}")
 
         if slugs:
             eb_slug = slugs["eb_slug"]
             eb_state = slugs["eb_state"]
         else:
-            print(f"  ⚠️  No Eventbrite config for '{city_key}' — skipping (add to CITY_SLUG_MAP)")
+            print(f"[events] Eventbrite — no config for '{city_key}', skipping")
             eb_slug = eb_state = None
 
         if eb_slug:
-            print(f"  📅 Eventbrite — {eb_slug}...")
+            print(f"[events] Eventbrite — {eb_slug}/{eb_state}...")
             eb_before = len(all_events)
-            for e in scrape_eventbrite_city(city_slug=eb_slug, state=eb_state):
-                if e["id"] not in seen:
-                    seen.add(e["id"])
-                    all_events.append(e)
-            print(f"     → {len(all_events) - eb_before} events")
+            try:
+                for e in scrape_eventbrite_city(city_slug=eb_slug, state=eb_state):
+                    if e["id"] not in seen:
+                        seen.add(e["id"])
+                        all_events.append(e)
+                print(f"[events] Eventbrite → {len(all_events) - eb_before} events")
+            except Exception as ex:
+                print(f"[events] Eventbrite ERROR: {ex}")
 
-    print(f"  Total unique events: {len(all_events)}")
+    print(f"[events] Total unique: {len(all_events)}")
     return all_events
