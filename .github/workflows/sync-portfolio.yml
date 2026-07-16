@@ -1,0 +1,36 @@
+name: Sync portfolio entry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - PORTFOLIO.md
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout job-bot
+        uses: actions/checkout@v4
+
+      - name: Checkout ai-portfolio
+        uses: actions/checkout@v4
+        with:
+          repository: tegapeters/ai-portfolio
+          token: ${{ secrets.PORTFOLIO_PAT }}
+          path: ai-portfolio
+
+      - name: Update Job Pal section
+        run: |
+          python3 .github/scripts/sync_portfolio.py \
+            PORTFOLIO.md \
+            ai-portfolio/README.md
+
+      - name: Commit and push
+        run: |
+          cd ai-portfolio
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --staged --quiet && echo "No changes to sync." || \
+            git commit -m "Auto-sync Job Pal entry from job-bot" && git push
