@@ -2049,7 +2049,7 @@ elif page == "Events":
         f"Attending  ({_n_attending})",
     ])
 
-    def _render_events(ev_list):
+    def _render_events(ev_list, tab_key):
         if not ev_list:
             st.markdown(
                 '<div class="pipeline-card" style="text-align:center;padding:24px">'
@@ -2057,7 +2057,6 @@ elif page == "Events":
                 unsafe_allow_html=True,
             )
             return
-        # Sort by relevance score desc, then date asc
         ev_list = sorted(ev_list, key=lambda e: (-(e.get("relevance_score") or 0), e.get("start_date") or ""))
         st.markdown(f'<div class="section-label">{len(ev_list)} events · sorted by relevance</div>',
                     unsafe_allow_html=True)
@@ -2073,7 +2072,9 @@ elif page == "Events":
                 date_str = dt.strftime("%a %b %-d · %-I:%M %p")
             except Exception:
                 date_str = raw_date[:16] if raw_date else "Date TBD"
-            with st.expander(f"{score}/10  —  {ev.get('title','')[:60]}", expanded=False):
+            eid = ev["id"]
+            with st.expander(f"{score}/10  —  {ev.get('title','')[:60]}", expanded=False,
+                             key=f"ev_exp_{tab_key}_{eid}"):
                 top_col, btn_col = st.columns([3, 1])
                 with top_col:
                     st.markdown(
@@ -2096,26 +2097,25 @@ elif page == "Events":
                     if ev.get("url"):
                         st.markdown(f"[View event ↗]({ev['url']})")
                 with btn_col:
-                    eid = ev["id"]
                     st.markdown(f'<div style="margin-bottom:8px">{status_dot}</div>',
                                 unsafe_allow_html=True)
-                    if st.button("Interested", key=f"ev_int_{eid}", use_container_width=True):
+                    if st.button("Interested", key=f"ev_int_{tab_key}_{eid}", use_container_width=True):
                         update_event_status(eid, "interested", user_id=_USER_ID)
                         st.rerun()
-                    if st.button("Attending", key=f"ev_att_{eid}", use_container_width=True,
+                    if st.button("Attending", key=f"ev_att_{tab_key}_{eid}", use_container_width=True,
                                  type="primary"):
                         update_event_status(eid, "attending", user_id=_USER_ID)
                         st.rerun()
-                    if st.button("Skip", key=f"ev_skip_{eid}", use_container_width=True):
+                    if st.button("Skip", key=f"ev_skip_{tab_key}_{eid}", use_container_width=True):
                         update_event_status(eid, "skipped", user_id=_USER_ID)
                         st.rerun()
 
     with _status_tab:
-        _render_events([e for e in events if e.get("status") != "skipped"])
+        _render_events([e for e in events if e.get("status") != "skipped"], "all")
     with _interested_tab:
-        _render_events([e for e in events if e.get("status") == "interested"])
+        _render_events([e for e in events if e.get("status") == "interested"], "int")
     with _attending_tab:
-        _render_events([e for e in events if e.get("status") == "attending"])
+        _render_events([e for e in events if e.get("status") == "attending"], "att")
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want networking tips or event prep help?</div>', unsafe_allow_html=True)
