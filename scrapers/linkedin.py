@@ -113,24 +113,36 @@ def _parse_jobs_from_html(html: str, source_url: str) -> list[dict]:
     return jobs
 
 
-def scrape_linkedin(max_per_role: int = 15, target_roles: list[str] = None) -> list[dict]:
+def scrape_linkedin(max_per_role: int = 15, target_roles: list[str] = None,
+                    locations: list[str] | None = None) -> list[dict]:
     jobs = []
     seen = set()
     roles = target_roles if target_roles else TARGET_ROLES  # CLI fallback only
 
+    # Resolve which work types and search locations to use based on user preference.
+    # If no preference is set, fall back to all work types + all config onsite cities.
+    if locations:
+        wants_remote = any(l.lower() in ("remote", "united states") for l in locations)
+        city_locs = [l for l in locations if l.lower() not in ("remote", "united states")]
+    else:
+        wants_remote = True
+        city_locs = LOCATIONS_ONSITE
+
+    search_matrix: list[tuple[str, str, list[str]]] = []
+    if wants_remote:
+        search_matrix.append(("remote", WORK_TYPES["remote"], ["United+States"]))
+        search_matrix.append(("hybrid", WORK_TYPES["hybrid"], ["United+States"]))
+    if city_locs:
+        enc = [l.replace(" ", "+").replace(",", "%2C") for l in city_locs]
+        search_matrix.append(("onsite", WORK_TYPES["onsite"], enc))
+
     for role in roles:
         role_count = 0
         query = requests.utils.quote(role)
-        for wt_name, wt_code in WORK_TYPES.items():
+        for wt_name, wt_code, loc_list in search_matrix:
             if role_count >= max_per_role:
                 break
-            if wt_name == "onsite":
-                # Search across all US onsite cities
-                onsite_locs = [l.replace(" ", "+").replace(",", "%2C") for l in LOCATIONS_ONSITE]
-            else:
-                onsite_locs = ["United+States"]
-
-            for loc in onsite_locs:
+            for loc in loc_list:
                 if role_count >= max_per_role:
                     break
                 url = LI_SEARCH.format(query=query, location=loc, work_type=wt_code)

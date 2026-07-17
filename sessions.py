@@ -15,22 +15,26 @@ from datetime import datetime, timezone
 from tracker import get_client
 
 
-def save_session(uid: str, resume_text: str, target_roles: list[str]) -> str:
+def save_session(uid: str, resume_text: str, target_roles: list[str],
+                 preferred_locations: list[str] | None = None) -> str:
     """Upsert session. Returns the uid."""
     sb = get_client()
     sb.table("user_sessions").upsert({
         "id": uid,
         "resume_text": resume_text,
         "target_roles": target_roles,
+        "preferred_locations": preferred_locations or [],
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }, on_conflict="id").execute()
     return uid
 
 
 def load_session(uid: str) -> dict | None:
-    """Return {resume_text, target_roles, gmail_scan_enabled} or None if not found."""
+    """Return {resume_text, target_roles, gmail_scan_enabled, preferred_locations} or None if not found."""
     sb = get_client()
-    result = sb.table("user_sessions").select("resume_text,target_roles,gmail_scan_enabled").eq("id", uid).execute()
+    result = sb.table("user_sessions").select(
+        "resume_text,target_roles,gmail_scan_enabled,preferred_locations"
+    ).eq("id", uid).execute()
     if result.data:
         return result.data[0]
     return None

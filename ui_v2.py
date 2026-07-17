@@ -506,6 +506,8 @@ def _try_restore_session():
             st.session_state["session_uid"] = uid
             if data.get("target_roles"):
                 st.session_state["target_roles"] = data["target_roles"]
+            if data.get("preferred_locations"):
+                st.session_state["preferred_locations"] = data["preferred_locations"]
             if data.get("gmail_scan_enabled"):
                 st.session_state["gmail_scan_enabled"] = True
     except Exception:
@@ -995,26 +997,25 @@ def _render_assistant_panel(page_key: str, page_context: str = "") -> None:
 
     import anthropic as _anthropic
 
-    def _stream(hist):
-        api_key = None
-        try:
-            from config import ANTHROPIC_API_KEY
-            api_key = ANTHROPIC_API_KEY
-        except Exception:
-            pass
-        _client = _anthropic.Anthropic(api_key=api_key)
+    api_key = None
+    try:
+        from config import ANTHROPIC_API_KEY
+        api_key = ANTHROPIC_API_KEY
+    except Exception:
+        pass
 
-        def _gen():
-            with _client.messages.stream(
-                model="claude-sonnet-4-6",
-                max_tokens=1024,
-                system=[{"type": "text", "text": _build_assistant_system_prompt(page_context), "cache_control": {"type": "ephemeral"}}],
-                messages=hist,
-                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-            ) as stream:
-                for text in stream.text_stream:
-                    yield text
-        return _gen
+    def _stream_gen(hist):
+        """Generator that yields text chunks from Claude streaming API."""
+        _client = _anthropic.Anthropic(api_key=api_key)
+        with _client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=[{"type": "text", "text": _build_assistant_system_prompt(page_context), "cache_control": {"type": "ephemeral"}}],
+            messages=hist,
+            extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
 
     label = f"Ask the Assistant {'💬' if has_history else '🤖'}"
     with st.expander(label, expanded=has_history):
@@ -1027,17 +1028,17 @@ def _render_assistant_panel(page_key: str, page_context: str = "") -> None:
         # Stream any pending unanswered user message
         if history and history[-1]["role"] == "user":
             with st.chat_message("assistant", avatar="🤖"):
-                response = st.write_stream(_stream(history))
+                response = st.write_stream(_stream_gen(history))
             st.session_state[hist_key].append({"role": "assistant", "content": response})
 
-        # Input form (clears on submit)
+        # Input — text field and Send button side-by-side in the form
         with st.form(f"asst_form_{page_key}", clear_on_submit=True):
-            user_input = st.text_input(
-                "Ask about this page or your job search…",
-                label_visibility="collapsed",
-                placeholder="Ask about this page or your job search…",
-            )
             c1, c2 = st.columns([5, 1])
+            user_input = c1.text_input(
+                "panel_input",
+                label_visibility="collapsed",
+                placeholder="Ask about your job search…",
+            )
             submitted = c2.form_submit_button("Send", type="primary", use_container_width=True)
 
         if submitted and user_input.strip():
@@ -1136,8 +1137,8 @@ if page == "Setup":
                     if _USER_ID:
                         clear_session(_USER_ID)
                     for _k in ("resume_text", "target_roles", "min_salary", "session_uid",
-                               "_suggested_roles", "_roles_text_area", "_confirm_setup_clear",
-                               "_session_restored"):
+                               "preferred_locations", "_suggested_roles", "_roles_text_area",
+                               "_confirm_setup_clear", "_session_restored"):
                         st.session_state.pop(_k, None)
                     st.session_state["_user_session_restored_for"] = _USER_ID
                     st.query_params.clear()
@@ -1321,20 +1322,59 @@ if page == "Setup":
         except Exception:
             pass
 
+    # ── Preferred Locations ───────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:20px">Preferred Locations</div>', unsafe_allow_html=True)
+    _loc_options = [
+        "Remote",
+        "Houston, TX",
+        "Austin, TX",
+        "Dallas, TX",
+        "New York, NY",
+        "San Francisco, CA",
+        "Seattle, WA",
+        "Chicago, IL",
+        "Atlanta, GA",
+        "Denver, CO",
+        "Boston, MA",
+        "Washington, DC",
+        "Los Angeles, CA",
+        "Nashville, TN",
+        "Charlotte, NC",
+        "Phoenix, AZ",
+    ]
+    _saved_locs = st.session_state.get("preferred_locations") or ["Remote"]
+    selected_locations = st.multiselect(
+        "Preferred locations",
+        options=_loc_options,
+        default=[l for l in _saved_locs if l in _loc_options],
+        label_visibility="collapsed",
+        help="Jobs will be scraped and scored for these locations. Select Remote to include remote-only boards.",
+    )
+    _custom_loc = st.text_input(
+        "Add a city not listed (optional)",
+        value="",
+        placeholder="e.g. Miami, FL",
+        label_visibility="collapsed",
+    )
+    if _custom_loc.strip() and _custom_loc.strip() not in selected_locations:
+        selected_locations = selected_locations + [_custom_loc.strip()]
+
     if st.button("Save & Go to Pipeline →", type="primary", use_container_width=True):
         if not extracted_text or len(extracted_text.strip()) < 100:
             st.error("Resume looks too short or empty — upload a file or paste your resume text.")
         else:
             clean_text = extracted_text.strip()
             roles = [r.strip() for r in roles_input.splitlines() if r.strip()]
+            locs  = selected_locations or ["Remote"]
             st.session_state["resume_text"] = clean_text
             st.session_state["target_roles"] = roles
             st.session_state["min_salary"] = salary_map[selected_salary]
+            st.session_state["preferred_locations"] = locs
 
             # Persist to Supabase — use auth user_id as key so resume is tied to account
             uid = _USER_ID or st.session_state.get("session_uid") or new_uid()
             try:
-                save_session(uid, clean_text, roles)
+                save_session(uid, clean_text, roles, preferred_locations=locs)
                 st.session_state["session_uid"] = uid
                 if not _USER_ID:
                     st.query_params["uid"] = uid
@@ -2161,9 +2201,11 @@ elif page == "Run Pipeline":
     # ── Pre-flight checklist ──────────────────────────────────────
     _roles   = st.session_state.get("target_roles") or []
     _salary  = st.session_state.get("min_salary", 0)
+    _pref_locs = st.session_state.get("preferred_locations") or []
     _resume_kb = round(len(resume_text) / 1024, 1)
     _salary_label = f"${_salary:,}+" if _salary else "No minimum set"
     _roles_label  = ", ".join(_roles[:3]) + ("…" if len(_roles) > 3 else "") if _roles else None
+    _locs_label   = ", ".join(_pref_locs[:3]) + ("…" if len(_pref_locs) > 3 else "") if _pref_locs else "All locations (set in Setup)"
 
     st.markdown(f"""
     <div class="preflight">
@@ -2173,7 +2215,8 @@ elif page == "Run Pipeline":
         {'Target roles: <span style="color:#F5F4EE">' + _roles_label + '</span>' if _roles else 'No target roles set — go to Setup before running'}
       </div>
       <div class="pf-row"><span class="ok">✓</span> Salary floor: <span style="color:#F5F4EE">{_salary_label}</span></div>
-      <div class="pf-row"><span class="ok">✓</span> Sources: LinkedIn · RemoteOK · Remotive · We Work Remotely · Jobicy</div>
+      <div class="pf-row"><span class="ok">✓</span> Locations: <span style="color:#F5F4EE">{_locs_label}</span></div>
+      <div class="pf-row"><span class="ok">✓</span> Sources: LinkedIn · Indeed · RemoteOK · Remotive · We Work Remotely · Jobicy</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -2223,6 +2266,7 @@ elif page == "Run Pipeline":
             jobs = scrape_all(
                 target_roles=_pipeline_roles,
                 min_salary=st.session_state.get("min_salary", 0),
+                locations=st.session_state.get("preferred_locations") or [],
             )
 
         st.info(f"Scraped {len(jobs)} jobs total")

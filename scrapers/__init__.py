@@ -43,7 +43,8 @@ def _title_matches_roles(title: str, roles: list[str]) -> bool:
     return False
 
 
-def scrape_all(target_roles: list[str] = None, min_salary: int = 0) -> list[dict]:
+def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
+               locations: list[str] | None = None) -> list[dict]:
     results = {}
 
     sources = [
@@ -62,6 +63,8 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0) -> list[dict
             kwargs["target_roles"] = target_roles
         if "min_salary" in sig:
             kwargs["min_salary"] = min_salary
+        if "locations" in sig:
+            kwargs["locations"] = locations or []
         jobs = fn(**kwargs)
         print(f"   → {name}: {len(jobs)} jobs")
         return name, jobs
