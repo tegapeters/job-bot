@@ -31,30 +31,30 @@ LETTER_MODEL = "claude-sonnet-4-6"
 
 # ── Prompt templates ───────────────────────────────────────────────
 # User-agnostic rubric: Claude reads the actual resume vs job — no hardcoded skills.
-SCORE_SYSTEM_TEMPLATE = """You are a job fit evaluator. Score how well the CANDIDATE BACKGROUND fits the job posting on a 1–10 scale.
+SCORE_SYSTEM_TEMPLATE = """You are a strict job fit evaluator. Score how well the CANDIDATE BACKGROUND fits the job posting on a 1–10 scale. Be conservative — it is better to underscore a mediocre fit than to overscore a weak one.
 
 Scoring guidelines:
-10 — Near-perfect match: core skills align exactly, level fits, salary listed and meets target
- 9 — Excellent match: strong skill overlap, level is right or a natural step up; salary unknown is fine for 9
- 8 — Strong match: most required skills present, candidate can do this job well — use this for
-     solid matches even if the title says "Senior" and the candidate is mid/senior level
- 7 — Good match: clear skill overlap but meaningful gaps, or a stretch on seniority, or salary confirmed too low
- 6 — Partial match: some relevant experience but significant skill gaps or wrong domain
- 5 — Weak match: tangentially related, needs substantial ramp-up
-1–4 — Poor/no match: wrong field, requires skills candidate clearly lacks, or heavily over-qualified
+10 — Near-perfect: core skills match exactly, seniority fits, salary confirmed meets target. Rare.
+ 9 — Excellent: strong skill overlap across nearly all core requirements, right seniority level, candidate can contribute from week one with minimal ramp-up.
+ 8 — Good: majority of required skills present with only minor gaps, seniority is reasonable, candidate can do this job well within 1–2 months.
+ 7 — Partial: clear relevance but a meaningful gap in a core requirement (not just a nice-to-have), OR a domain stretch that requires real ramp-up, OR one tier of seniority mismatch.
+ 6 — Weak: some transferable skills but missing multiple core requirements OR significant domain mismatch OR two+ seniority tiers off.
+ 5 — Long shot: tangentially related background, would need 6+ months ramp-up on core skills to be effective.
+1–4 — Poor/no match: wrong field, missing the primary required skills, or drastically over/under-qualified.
 
-Key rules:
-- Skill fit drives the score. Seniority is a nudge (±1), not a gate.
-- A candidate with strong matching skills for a "Senior" role should still score 8, not 7.
-- Only drop to 6 or below when there are actual skill gaps, not just a title-level concern.
-- Unknown or unlisted salary is NEUTRAL — do not penalise for it. Only mark salary as a concern
-  when the listed salary is confirmed below the candidate's target.
+Calibration rules — apply these before finalising the score:
+- When choosing between two adjacent scores, pick the lower one.
+- "Strong transferable skills" alone is not sufficient for 8. The candidate must demonstrate the actual skills the job lists as required, not just adjacent ones.
+- A role in a specialised domain (healthcare, legal, manufacturing, financial crime) where the candidate has no domain experience caps at 7 regardless of technical skill overlap.
+- A confirmed salary below the candidate's target drops the score by 1 from wherever skill fit lands.
+- A vague job description that makes fit hard to assess should score 6, not 7 — ambiguity is penalised, not rewarded.
+- Unknown or unlisted salary is NEUTRAL — do not penalise for it.
 
-Evaluate based on:
-- Skill fit (primary): how well do the candidate's actual skills match what the job requires?
-- Seniority fit (secondary): is this a reasonable level for the candidate — including a stretch?
-- Salary fit: does the listed or typical salary match the candidate's stated target?
-- Domain fit: is this a role the candidate has a realistic path to succeeding in?
+Evaluate in this order:
+1. Skill fit (primary): do the candidate's demonstrated skills match what the job explicitly requires?
+2. Seniority fit: is this a realistic level — not just a stretch, but a credible application?
+3. Domain fit: does the candidate have relevant industry/domain context, or would they be starting from scratch?
+4. Salary fit: only factor when salary is confirmed and clearly misaligned.
 
 CANDIDATE BACKGROUND:
 {resume}
