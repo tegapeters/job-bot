@@ -2150,11 +2150,11 @@ elif page == "Events":
         ev_search = st.text_input("Search", placeholder="AI, data, Python…", key="ev_search",
                                   label_visibility="collapsed")
     with f3:
-        _date_window = st.selectbox(
-            "Date range",
-            ["Next 7 days", "Next 14 days", "Next 30 days", "Next 90 days", "All upcoming"],
-            index=2,
-            key="ev_date_window",
+        _ev_sort = st.selectbox(
+            "Sort",
+            ["Relevance", "Date (soonest first)"],
+            index=0,
+            key="ev_sort",
             label_visibility="collapsed",
         )
 
@@ -2164,21 +2164,6 @@ elif page == "Events":
         q = ev_search.lower()
         events = [e for e in events if q in (e.get("title","") + e.get("description","") +
                                               e.get("organizer","")).lower()]
-    # Date window filter
-    if _date_window != "All upcoming":
-        from datetime import datetime, timezone, timedelta
-        _days = int(_date_window.split()[1])
-        _cutoff = datetime.now(timezone.utc) + timedelta(days=_days)
-        def _event_in_window(e):
-            raw = e.get("start_date", "")
-            try:
-                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt <= _cutoff
-            except Exception:
-                return True  # keep if date is unparseable
-        events = [e for e in events if _event_in_window(e)]
 
     # ── Status tabs ──────────────────────────────────────────────
     _n_all        = len([e for e in events if e.get("status") != "skipped"])
@@ -2198,8 +2183,22 @@ elif page == "Events":
                 unsafe_allow_html=True,
             )
             return
-        ev_list = sorted(ev_list, key=lambda e: (-(e.get("relevance_score") or 0), e.get("start_date") or ""))
-        st.markdown(f'<div class="section-label">{len(ev_list)} events · sorted by relevance</div>',
+        _sort_mode = st.session_state.get("ev_sort", "Relevance")
+        if _sort_mode == "Date (soonest first)":
+            from datetime import datetime, timezone
+            def _parse_date(e):
+                raw = e.get("start_date") or ""
+                try:
+                    dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+                except Exception:
+                    return datetime.max.replace(tzinfo=timezone.utc)
+            ev_list = sorted(ev_list, key=_parse_date)
+            _sort_label = "date"
+        else:
+            ev_list = sorted(ev_list, key=lambda e: (-(e.get("relevance_score") or 0), e.get("start_date") or ""))
+            _sort_label = "relevance"
+        st.markdown(f'<div class="section-label">{len(ev_list)} events · sorted by {_sort_label}</div>',
                     unsafe_allow_html=True)
         STATUS_COLORS = {"new": "#4A4A45", "interested": "#f5c518", "attending": "#D4FF3A"}
         for ev in ev_list:
