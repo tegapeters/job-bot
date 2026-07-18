@@ -50,11 +50,35 @@ def _matches_roles(title: str, roles: list[str]) -> bool:
     return False
 
 
+def _loc_slugs(locations: list[str] | None) -> set[str]:
+    """Lowercase city/country slugs from the user's preferred locations for post-fetch filtering."""
+    if not locations:
+        return set()
+    slugs = set()
+    for loc in locations:
+        # "Houston, TX" → {"houston", "tx"}; "Remote" → {"remote"}
+        for part in loc.replace(",", " ").lower().split():
+            if len(part) > 1:
+                slugs.add(part)
+    return slugs
+
+
+def _location_matches(job_location: str, slugs: set[str]) -> bool:
+    """True if job location contains any preferred city/country slug, or job is remote."""
+    if not slugs:
+        return True
+    loc_lower = job_location.lower()
+    if "remote" in loc_lower or "flexible" in loc_lower:
+        return True
+    return any(slug in loc_lower for slug in slugs)
+
+
 def scrape_themuse(target_roles: list[str] = None,
                    locations: list[str] | None = None) -> list[dict]:
     jobs: list[dict] = []
     seen: set[str] = set()
     roles = target_roles or []
+    loc_slugs = _loc_slugs(locations)
 
     for category in _CATEGORIES:
         for page in range(1, 4):  # up to 3 pages per category
@@ -94,6 +118,10 @@ def scrape_themuse(target_roles: list[str] = None,
                     # Skip intern/entry levels
                     level_str = " ".join(levels).lower()
                     if any(x in level_str for x in ("intern", "entry")):
+                        continue
+
+                    # Location filter — skip if job location doesn't match preference
+                    if loc_slugs and not _location_matches(location, loc_slugs):
                         continue
 
                     jobs.append({

@@ -46,9 +46,21 @@ def _title_matches_roles(title: str, roles: list[str]) -> bool:
     return False
 
 
+_REMOTE_ONLY_SOURCES = {"RemoteOK", "Remotive", "We Work Remotely", "Jobicy"}
+
+
+def _wants_remote(locations: list[str] | None) -> bool:
+    """True if the user's location list includes a remote/nationwide option, or is unset."""
+    if not locations:
+        return True  # no preference = include everything
+    return any(l.lower() in ("remote", "united states", "us", "anywhere") for l in locations)
+
+
 def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
                locations: list[str] | None = None) -> list[dict]:
     results = {}
+
+    include_remote = _wants_remote(locations)
 
     sources = [
         ("LinkedIn",         scrape_linkedin),
@@ -60,6 +72,12 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
         ("USAJobs",          scrape_usajobs),
         ("The Muse",         scrape_themuse),
     ]
+
+    # Skip remote-only boards when user explicitly wants onsite/hybrid cities only
+    if not include_remote:
+        skipped = [n for n, _ in sources if n in _REMOTE_ONLY_SOURCES]
+        sources = [(n, fn) for n, fn in sources if n not in _REMOTE_ONLY_SOURCES]
+        print(f"   📍 Location filter active — skipping remote-only sources: {', '.join(skipped)}")
 
     def _run_scraper(name: str, fn) -> tuple[str, list[dict]]:
         print(f"🔍 Scraping {name}...")
