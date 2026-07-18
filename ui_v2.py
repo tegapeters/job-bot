@@ -2344,6 +2344,12 @@ elif page == "Run Pipeline":
             st.error("No target roles set — go to **Setup** and add the roles you're looking for before running.")
             st.stop()
 
+        # Auto-prune unreviewed jobs older than 14 days before each run
+        from tracker import prune_stale_queue
+        _pruned = prune_stale_queue(user_id=_USER_ID, days=14)
+        if _pruned:
+            st.info(f"🗑️ Cleared {_pruned} unreviewed jobs older than 14 days — fresh listings only.")
+
         with st.spinner("Scraping jobs from 8 sources in parallel…"):
             from scrapers import scrape_all
             jobs = scrape_all(

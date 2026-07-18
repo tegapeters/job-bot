@@ -514,6 +514,23 @@ def clear_queue(user_id: str | None = None):
     q.execute()
 
 
+def prune_stale_queue(user_id: str | None = None, days: int = 14) -> int:
+    """Delete unreviewed (status=new) jobs older than `days` days.
+
+    Called automatically at the start of each pipeline run. Safe to re-run:
+    if a role is still open it will be re-scraped; if filled it won't return.
+    Returns the number of rows deleted.
+    """
+    from datetime import datetime, timezone, timedelta
+    sb = get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    q = sb.table("job_applications").delete().eq("status", "new").lt("created_at", cutoff)
+    if user_id:
+        q = q.eq("user_id", user_id)
+    result = q.execute()
+    return len(result.data or [])
+
+
 def clear_all_data(user_id: str | None = None):
     """Delete all jobs, events, and pipeline runs for the user."""
     sb = get_client()
