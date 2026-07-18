@@ -49,12 +49,14 @@ Calibration rules — apply these before finalising the score:
 - A confirmed salary below the candidate's target drops the score by 1 from wherever skill fit lands.
 - A vague job description that makes fit hard to assess should score 6, not 7 — ambiguity is penalised, not rewarded.
 - Unknown or unlisted salary is NEUTRAL — do not penalise for it.
+- Work arrangement: if the job is Onsite and the candidate's resume indicates remote/hybrid preference, drop score by 1 unless the onsite city matches a city mentioned in the candidate's resume. Remote and Hybrid arrangements are NEUTRAL — do not penalise.
 
 Evaluate in this order:
 1. Skill fit (primary): do the candidate's demonstrated skills match what the job explicitly requires?
 2. Seniority fit: is this a realistic level — not just a stretch, but a credible application?
 3. Domain fit: does the candidate have relevant industry/domain context, or would they be starting from scratch?
 4. Salary fit: only factor when salary is confirmed and clearly misaligned.
+5. Location fit: only penalise if onsite and clearly outside candidate's stated locations.
 
 CANDIDATE BACKGROUND:
 {resume}
@@ -69,6 +71,7 @@ SCORE_USER_TEMPLATE = """JOB POSTING:
 Title: {title}
 Company: {company}
 Location: {location}
+Work arrangement: {work_type}
 Salary (from posting): {salary}
 Candidate Salary Target: {salary_target}
 Description:
@@ -305,10 +308,14 @@ def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0) ->
     salary_target = f"${min_salary:,}+" if min_salary else "Not specified (infer from resume if stated)"
 
     system_text = SCORE_SYSTEM_TEMPLATE.format(resume=resume_text)
+    _wt = job.get("work_type") or "unknown"
+    work_type_label = {"remote": "Remote", "hybrid": "Hybrid (flexible)", "onsite": "Onsite"}.get(_wt, "Not specified")
+
     user_text = SCORE_USER_TEMPLATE.format(
         title=job["title"],
         company=job.get("company", ""),
         location=job.get("location", ""),
+        work_type=work_type_label,
         salary=salary_field,
         salary_target=salary_target,
         description=desc[:3000],

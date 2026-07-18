@@ -90,6 +90,24 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
         if "locations" in sig:
             kwargs["locations"] = locations or []
         jobs = fn(**kwargs)
+        # Backfill work_type for sources that don't set it themselves
+        _remote_sources = {"RemoteOK", "Remotive", "We Work Remotely", "Jobicy"}
+        _onsite_sources = {"USAJobs"}
+        for j in jobs:
+            if "work_type" not in j or not j["work_type"]:
+                if name in _remote_sources:
+                    j["work_type"] = "remote"
+                elif name in _onsite_sources:
+                    j["work_type"] = "onsite"
+                else:
+                    # Adzuna, Indeed, The Muse — infer from location field
+                    loc = (j.get("location") or "").lower()
+                    if "remote" in loc or "anywhere" in loc:
+                        j["work_type"] = "remote"
+                    elif loc and loc not in ("", "united states", "us"):
+                        j["work_type"] = "onsite"
+                    else:
+                        j["work_type"] = "unknown"
         print(f"   → {name}: {len(jobs)} jobs")
         return name, jobs
 

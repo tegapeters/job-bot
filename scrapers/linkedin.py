@@ -178,7 +178,14 @@ def scrape_linkedin(max_per_role: int = 15, target_roles: list[str] = None,
                         for j in parsed:
                             if j["id"] not in seen:
                                 seen.add(j["id"])
-                                j["location"] = loc.replace("+", " ").replace("%2C", ",")
+                                j["work_type"] = wt_name  # remote | hybrid | onsite
+                                # Store meaningful location: city for onsite, arrangement for remote/hybrid
+                                if wt_name == "remote":
+                                    j["location"] = "Remote"
+                                elif wt_name == "hybrid":
+                                    j["location"] = "Hybrid"
+                                else:
+                                    j["location"] = loc.replace("+", " ").replace("%2C", ",")
                                 jobs.append(j)
                                 role_count += 1
                                 if role_count >= max_per_role:
