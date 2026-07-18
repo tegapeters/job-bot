@@ -1753,6 +1753,32 @@ elif page == "Applied":
     _gmail_email  = st.session_state.get("gmail_apply_email", "")
     _gmail_pw     = st.session_state.get("gmail_app_password", "")
 
+    # Inline credential prompt — shows when Gmail is enabled but password missing
+    if _gmail_on and not _gmail_pw:
+        with st.expander("📬 Gmail scanning enabled — enter App Password to activate", expanded=True):
+            st.caption("Your password is only kept in memory for this browser session and never stored.")
+            _ic1, _ic2 = st.columns([2, 2])
+            with _ic1:
+                _inline_email = st.text_input(
+                    "Gmail address",
+                    value=_gmail_email or "tegapeters11@gmail.com",
+                    key="inline_gmail_email",
+                )
+            with _ic2:
+                _inline_pw = st.text_input(
+                    "App Password (16-char)",
+                    type="password",
+                    placeholder="xxxx xxxx xxxx xxxx",
+                    key="inline_gmail_pw",
+                )
+            if st.button("Activate scanning", type="primary", key="inline_gmail_save"):
+                if _inline_email and _inline_pw:
+                    st.session_state["gmail_apply_email"] = _inline_email.strip()
+                    st.session_state["gmail_app_password"] = _inline_pw.replace(" ", "").strip()
+                    st.rerun()
+                else:
+                    st.warning("Enter both email and App Password.")
+
     if _gmail_on and _gmail_email and _gmail_pw:
         # Auto-scan once per session on first Applied page load
         _scan_done = "_rejection_matches" in st.session_state
@@ -2117,12 +2143,20 @@ elif page == "Events":
 
     # ── Filters ───────────────────────────────────────────────────
     all_sources = sorted(set(e.get("source","") for e in events))
-    f1, f2 = st.columns([2, 2])
+    f1, f2, f3 = st.columns([2, 2, 2])
     with f1:
         src_filter = st.multiselect("Source", all_sources, default=all_sources, key="ev_src")
     with f2:
         ev_search = st.text_input("Search", placeholder="AI, data, Python…", key="ev_search",
                                   label_visibility="collapsed")
+    with f3:
+        _date_window = st.selectbox(
+            "Date range",
+            ["Next 7 days", "Next 14 days", "Next 30 days", "Next 90 days", "All upcoming"],
+            index=2,
+            key="ev_date_window",
+            label_visibility="collapsed",
+        )
 
     if src_filter:
         events = [e for e in events if e.get("source") in src_filter]
@@ -2130,6 +2164,21 @@ elif page == "Events":
         q = ev_search.lower()
         events = [e for e in events if q in (e.get("title","") + e.get("description","") +
                                               e.get("organizer","")).lower()]
+    # Date window filter
+    if _date_window != "All upcoming":
+        from datetime import datetime, timezone, timedelta
+        _days = int(_date_window.split()[1])
+        _cutoff = datetime.now(timezone.utc) + timedelta(days=_days)
+        def _event_in_window(e):
+            raw = e.get("start_date", "")
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt <= _cutoff
+            except Exception:
+                return True  # keep if date is unparseable
+        events = [e for e in events if _event_in_window(e)]
 
     # ── Status tabs ──────────────────────────────────────────────
     _n_all        = len([e for e in events if e.get("status") != "skipped"])
