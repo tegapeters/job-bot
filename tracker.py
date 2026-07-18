@@ -258,27 +258,42 @@ def get_personalization_context(event_limit: int = 400, user_id: str | None = No
     pos_title_tokens: Counter[str] = Counter()
     neg_title_tokens: Counter[str] = Counter()
 
+    # Resolve one signal per job — events are newest-first, so the first
+    # meaningful event we see for each job_id is the most recent outcome.
+    # Rejection always wins: if the most recent signal for a job is negative
+    # we don't want the earlier "applied" event to also count as positive.
+    job_signals: dict[str, str] = {}  # job_id -> "pos" | "neg"
     for e in events:
         jid = e.get("job_id")
+        if not jid:
+            continue
+        et = e.get("event_type") or ""
+        detail = e.get("detail") or ""
+        if jid in job_signals:
+            # Already classified by a more recent event — skip
+            continue
+        if _event_is_negative(et, detail):
+            job_signals[jid] = "neg"
+        elif _event_is_positive(et, detail):
+            job_signals[jid] = "pos"
+
+    for jid, direction in job_signals.items():
         job = jobs_by_id.get(jid)
         if not job:
             continue
-        company = (job.get("company") or "").lower().strip()
+        company = (job.get("company") or "").strip()
         title = (job.get("title") or "").lower()
         src = (job.get("source") or "").strip() or "unknown"
-        et = e.get("event_type") or ""
-        detail = e.get("detail") or ""
-
         words = [w.strip(".,()[]/-") for w in title.replace("/", " ").split() if len(w.strip(".,()[]/-")) > 3]
 
-        if _event_is_positive(et, detail):
+        if direction == "pos":
             if company:
                 pos_companies.add(company)
             if src:
                 pos_sources[src] += 1
             for w in words:
                 pos_title_tokens[w] += 1
-        elif _event_is_negative(et, detail):
+        else:
             if company:
                 neg_companies.add(company)
             for w in words:

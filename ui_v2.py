@@ -1645,15 +1645,21 @@ elif page == "Review Queue":
         ctx = get_personalization_context(user_id=_USER_ID)
         if ctx.get("has_signals"):
             pills = []
-            if ctx.get("pos_companies"):
-                pills.append(f"👍 Prefers companies: {', '.join(sorted(ctx['pos_companies'])[:3])}")
-            if ctx.get("neg_companies"):
-                pills.append(f"⚠️ Avoids companies: {', '.join(sorted(ctx['neg_companies'])[:3])}")
+            _pos_cos = sorted(ctx.get("pos_companies") or [], key=str.lower)[:4]
+            _neg_cos = sorted(ctx.get("neg_companies") or [], key=str.lower)[:4]
+            # Only show company signals when they point to different companies
+            _pos_cos_clean = [c for c in _pos_cos if c.lower() not in {x.lower() for x in _neg_cos}]
+            _neg_cos_clean = [c for c in _neg_cos if c.lower() not in {x.lower() for x in _pos_cos}]
+            if _pos_cos_clean:
+                pills.append(f"👍 Companies you've pursued: {', '.join(_pos_cos_clean)}")
+            if _neg_cos_clean:
+                pills.append(f"⚠️ Companies you've passed on: {', '.join(_neg_cos_clean)}")
             if ctx.get("title_tokens"):
-                pills.append(f"✅ Likes roles with: {', '.join(sorted(ctx['title_tokens'])[:5])}")
+                pills.append(f"✅ Role keywords you go for: {', '.join(sorted(ctx['title_tokens'])[:6])}")
             if ctx.get("neg_title_tokens"):
-                pills.append(f"⏭️ Tends to skip: {', '.join(sorted(ctx['neg_title_tokens'])[:5])} roles")
-            if pills:
+                pills.append(f"⏭️ Role types you tend to skip: {', '.join(sorted(ctx['neg_title_tokens'])[:5])}")
+            # Only show expander when there are at least 2 meaningful signal lines
+            if len(pills) >= 2:
                 with st.expander("What Job Pal has learned about you", expanded=False):
                     for p in pills:
                         st.caption(p)
