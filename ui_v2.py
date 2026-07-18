@@ -2308,9 +2308,9 @@ elif page == "Run Pipeline":
     with _mc1:
         scoring_mode = st.selectbox(
             "Scoring mode",
-            ["embed", "hybrid", "claude", "cheap"],
+            ["claude", "hybrid", "cheap"],
             index=0,
-            help="embed = TF-IDF + Claude for uncertain band (recommended) · hybrid = keyword pre-filter + Claude · claude = Claude scores everything · cheap = no LLM",
+            help="claude = Claude scores every job (default) · hybrid = keyword pre-filter + Claude (~60% cost) · cheap = heuristic only, no LLM",
         )
     with _mc2:
         enable_letters = st.checkbox(
@@ -2320,10 +2320,9 @@ elif page == "Run Pipeline":
         )
 
     _mode_info = {
-        "embed":  "🟢 TF-IDF similarity + `claude-sonnet-4-6` for borderline scores. Cheapest. Recommended.",
-        "hybrid": "🟡 Keyword pre-filter, then Claude for anything above the threshold.",
-        "claude": "🔵 Claude scores every job — most accurate, most API cost.",
-        "cheap":  "⚪ Keyword heuristic only. No LLM, no API calls.",
+        "claude": "🔵 Claude scores every job — most accurate. Recommended.",
+        "hybrid": "🟡 Keyword pre-filter, then Claude for anything above the threshold. ~60% of Claude cost.",
+        "cheap":  "⚪ Keyword heuristic only. No LLM, no API calls. Dev/testing only.",
     }
     st.caption(_mode_info.get(scoring_mode, ""))
 
