@@ -2278,7 +2278,7 @@ elif page == "Run Pipeline":
             st.error("No target roles set — go to **Setup** and add the roles you're looking for before running.")
             st.stop()
 
-        with st.spinner("Scraping jobs from 5 sources in parallel…"):
+        with st.spinner("Scraping jobs from 8 sources in parallel…"):
             from scrapers import scrape_all
             jobs = scrape_all(
                 target_roles=_pipeline_roles,
