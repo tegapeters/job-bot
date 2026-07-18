@@ -931,16 +931,23 @@ def _build_assistant_system_prompt(page_context: str = "") -> str:
     target_roles = st.session_state.get("target_roles") or []
     min_salary   = st.session_state.get("min_salary") or 0
 
-    queue      = [a for a in apps if a.get("status") == "new" and (a.get("score") or 0) >= 7]
+    new_jobs   = [a for a in apps if a.get("status") == "new"]
     applied    = [a for a in apps if a.get("status") == "applied"]
     interviews = [a for a in apps if a.get("status") == "interview"]
 
-    queue_lines = "\n".join(
-        f"- {a.get('title')} @ {a.get('company')} | score {a.get('score')}/10 | {a.get('salary_range') or 'no salary'}"
-        for a in sorted(queue, key=lambda x: x.get("score") or 0, reverse=True)[:10]
-    ) or "Empty"
+    strong   = sorted([j for j in new_jobs if (j.get("score") or 0) >= 8], key=lambda x: x.get("score") or 0, reverse=True)
+    solid    = sorted([j for j in new_jobs if (j.get("score") or 0) == 7], key=lambda x: x.get("score") or 0, reverse=True)
+    consider = sorted([j for j in new_jobs if (j.get("score") or 0) == 6], key=lambda x: x.get("score") or 0, reverse=True)
+
+    def _job_line(a):
+        sal = a.get("salary_range") or "no salary"
+        return f"- {a.get('title')} @ {a.get('company')} | score {a.get('score')}/10 | {sal}"
+
+    strong_lines  = "\n".join(_job_line(j) for j in strong[:8])   or "None"
+    solid_lines   = "\n".join(_job_line(j) for j in solid[:8])    or "None"
+    consider_lines= "\n".join(_job_line(j) for j in consider[:8]) or "None"
     applied_lines = "\n".join(
-        f"- {a.get('title')} @ {a.get('company')}" for a in applied[:8]
+        f"- {a.get('title')} @ {a.get('company')}" for a in applied[:10]
     ) or "None yet"
     interview_lines = "\n".join(
         f"- {a.get('title')} @ {a.get('company')}" for a in interviews
@@ -958,28 +965,39 @@ Minimum salary: {'${:,}'.format(min_salary) if min_salary else 'not set'}
 FULL RESUME
 {resume_text}
 
-REVIEW QUEUE (top 10 scored 7+, awaiting decision)
-{queue_lines}
+JOB QUEUE — UNREVIEWED JOBS (status: new)
 
-APPLIED ({len(applied)} total)
+STRONG LEADS — score 8-10 ({len(strong)} total, showing top 8)
+{strong_lines}
+
+SOLID LEADS — score 7 ({len(solid)} total, showing top 8)
+{solid_lines}
+
+WORTH CONSIDERING — score 6 ({len(consider)} total, showing top 8)
+{consider_lines}
+
+APPLIED ({len(applied)} total, showing 10 most recent)
 {applied_lines}
 
 INTERVIEWS ({len(interviews)} active)
 {interview_lines}
 
-TOTAL TRACKED: {len(apps)} jobs
+TOTAL TRACKED: {len(apps)} jobs | Unreviewed: {len(new_jobs)} | Applied: {len(applied)}
+
+SCORE GUIDE: 8-10 = strong match (apply now), 7 = solid (worth applying), 6 = partial fit (apply if targeting this role), 5 and below = long shot.
 
 You help the user with:
-- Understanding why jobs scored high or low
-- Deciding which queue jobs to apply to first
+- Deciding which queue jobs to apply to first (recommend 8s first, then 7s, then 6s if quota allows)
+- Understanding why a job scored the way it did
 - Writing or refining cover letters, thank-you emails, follow-ups
 - Interview prep for companies in their pipeline
 - Resume gap analysis against specific roles
 - Salary negotiation guidance
 - General job search strategy
 
-Be direct, specific, and use the data above. Keep answers concise unless asked for detail.
-Never invent job details — only reference what's shown. Do not give legal or financial advice."""
+Be direct, specific, and use the data above. When recommending jobs from the queue, always mention the score and company name.
+Keep answers concise unless asked for detail. Never invent job details — only reference what's shown above.
+Do not give legal or financial advice."""
 
 
 def _render_assistant_panel(page_key: str, page_context: str = "") -> None:
@@ -2523,31 +2541,39 @@ elif page == "Assistant":
             _ctx_apps = get_all_applications(user_id=_USER_ID) or []
         except Exception:
             _ctx_apps = []
+        _ctx_new = [a for a in _ctx_apps if a.get("status") == "new"]
         _ctx_queue = sorted(
-            [a for a in _ctx_apps if a.get("status") == "new" and (a.get("score") or 0) >= 7],
+            [a for a in _ctx_new if (a.get("score") or 0) >= 6],
             key=lambda x: x.get("score") or 0, reverse=True
         )
         _ctx_applied = [a for a in _ctx_apps if a.get("status") == "applied"]
         _ctx_interviews = [a for a in _ctx_apps if a.get("status") == "interview"]
+        _ctx_strong = len([j for j in _ctx_new if (j.get("score") or 0) >= 8])
+        _ctx_solid  = len([j for j in _ctx_new if (j.get("score") or 0) == 7])
+        _ctx_consider = len([j for j in _ctx_new if (j.get("score") or 0) == 6])
 
         st.markdown(f"""
         <div style="background:#131315;border:1px solid #1f1f22;border-radius:8px;padding:12px 14px;margin-bottom:12px">
           <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:8px">PIPELINE SNAPSHOT</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#F5F4EE">
-            <span style="color:#D4FF3A">{len(_ctx_queue)}</span> in queue &nbsp;·&nbsp;
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#F5F4EE;line-height:1.8">
+            <span style="color:#D4FF3A">{_ctx_strong}</span> strong (8+) &nbsp;·&nbsp;
+            <span style="color:#D4FF3A">{_ctx_solid}</span> solid (7) &nbsp;·&nbsp;
+            <span style="color:#D4FF3A">{_ctx_consider}</span> consider (6)<br>
             <span style="color:#D4FF3A">{len(_ctx_applied)}</span> applied &nbsp;·&nbsp;
             <span style="color:#D4FF3A">{len(_ctx_interviews)}</span> interviews
           </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Top 3 queue jobs
-        if _ctx_queue[:3]:
-            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:6px">TOP QUEUE JOBS</div>', unsafe_allow_html=True)
-            for _j in _ctx_queue[:3]:
+        # Top 5 queue jobs (6+)
+        if _ctx_queue[:5]:
+            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:6px">TOP UNREVIEWED JOBS</div>', unsafe_allow_html=True)
+            for _j in _ctx_queue[:5]:
+                _score = _j.get('score') or 0
+                _color = "#D4FF3A" if _score >= 8 else "#F5C842" if _score >= 7 else "#8B8B85"
                 st.markdown(f"""
                 <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8B8B85;padding:4px 0;border-bottom:1px solid #1f1f22">
-                  <span style="color:#D4FF3A">{_j.get('score')}/10</span> {_j.get('title', '')[:30]} @ {_j.get('company', '')[:20]}
+                  <span style="color:{_color}">{_score}/10</span> {_j.get('title', '')[:30]} @ {_j.get('company', '')[:20]}
                 </div>""", unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -2579,9 +2605,10 @@ elif page == "Assistant":
         # Quick-action buttons
         st.markdown('<div class="section-label" style="margin-top:16px">Quick actions</div>', unsafe_allow_html=True)
         _quick_actions = [
-            "Which jobs in my queue should I apply to first?",
+            "Which jobs should I apply to first — walk me through the top 5.",
             "What skills am I missing for the roles I'm targeting?",
-            "How should I negotiate salary for a Senior Data role?",
+            "Which of my 6-scoring jobs are still worth applying to?",
+            "Draft a follow-up email for a job I applied to 2 weeks ago.",
         ]
         for _qa in _quick_actions:
             if st.button(_qa, key=f"qa_{_qa[:25]}", use_container_width=True):
@@ -2617,10 +2644,10 @@ elif page == "Assistant":
         if not st.session_state["_chat_history"]:
             st.markdown('<div class="section-label">Start here</div>', unsafe_allow_html=True)
             suggestions = [
-                "Which jobs in my queue should I apply to first?",
+                "Which jobs should I apply to first — walk me through the top 5.",
                 "What skills am I missing for the roles I'm targeting?",
+                "Which of my 6-scoring jobs are worth applying to anyway?",
                 "Write a follow-up email for a job I applied to last week.",
-                "How should I prepare for a Data Scientist interview?",
             ]
             s_col1, s_col2 = st.columns(2)
             for i, suggestion in enumerate(suggestions):
