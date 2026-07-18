@@ -3,9 +3,8 @@
 Job Bot — CLI entry point
 Usage:
   python main.py scrape                      # Pull new jobs, score with Claude (default)
-  python main.py scrape --backend hybrid     # Keyword pre-filter + Claude
-  python main.py scrape --backend embed      # TF-IDF only (no LLM, cheapest)
-  python main.py scrape --backend cheap      # Heuristic only, no LLM
+  python main.py scrape --backend hybrid     # Keyword pre-filter + Claude (faster, ~60% cost)
+  python main.py scrape --backend cheap      # Heuristic only, no LLM (dev/testing)
   python main.py review          # Review queue in terminal
   python main.py apply           # Auto-fill & submit queued applications (review-first)
   python main.py linkedin-login  # One-time LinkedIn login (saves session cookies)
@@ -30,7 +29,7 @@ def cmd_scrape():
         idx = args.index("--backend")
         if idx + 1 < len(args):
             backend = args[idx + 1]
-    valid = {"embed", "hybrid", "claude", "cheap"}
+    valid = {"hybrid", "claude", "cheap"}
     if backend not in valid:
         print(f"Unknown backend '{backend}'. Choose from: {', '.join(sorted(valid))}")
         return

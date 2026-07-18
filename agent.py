@@ -314,6 +314,22 @@ def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0) ->
         description=desc[:3000],
     )
 
+    # Compute lightweight features alongside Claude — persisted for future model training
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity as _cos_sim
+        _vec = TfidfVectorizer(max_features=4000, ngram_range=(1, 2),
+                               stop_words="english", sublinear_tf=True)
+        _mat = _vec.fit_transform([resume_text or "", desc or "title"])
+        job["tfidf_sim"] = round(float(_cos_sim(_mat[0:1], _mat[1:2])[0][0]), 4)
+        resume_skills = _extract_skills((resume_text or "").lower())
+        job_skills = _extract_skills(f"{job.get('title','')} {desc}".lower())
+        job["skill_ratio"] = round(
+            len(resume_skills & job_skills) / max(len(job_skills), 1), 4
+        ) if job_skills else 0.0
+    except Exception:
+        pass  # never block scoring on feature extraction
+
     for attempt in range(3):
         try:
             msg = client.messages.create(
@@ -462,15 +478,6 @@ def score_job(
         if (stage1.get("score") or 0) >= hybrid_min:
             return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
         return stage1
-    if backend == "embed":
-        from embedder import score_job_embed
-        stage1 = score_job_embed(job, resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)
-        embed_score = stage1.get("score") or 0
-        if embed_score >= 3:
-            # Send everything above clear-reject floor to Sonnet — avoids DS vocabulary bias
-            # where TF-IDF inflates DS roles past 8 and bypasses Sonnet entirely.
-            return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
-        return stage1  # Clear reject (1-2), no Claude call
     return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
 
 
@@ -519,7 +526,7 @@ def process_jobs(
     import time as _time
 
     mode = (scoring_backend or SCORING_BACKEND or "claude").strip().lower()
-    if mode not in {"cheap", "hybrid", "claude", "embed"}:
+    if mode not in {"cheap", "hybrid", "claude"}:
         mode = "claude"
 
     cheap_kwargs = dict(resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)

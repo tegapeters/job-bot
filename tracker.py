@@ -89,6 +89,10 @@ def upsert_jobs(jobs: list[dict], user_id: str | None = None):
             "cover_letter": j.get("cover_letter", ""),
             "scored_by": j.get("scored_by", ""),
         }
+        if j.get("tfidf_sim") is not None:
+            row["tfidf_sim"] = j["tfidf_sim"]
+        if j.get("skill_ratio") is not None:
+            row["skill_ratio"] = j["skill_ratio"]
         if user_id:
             row["user_id"] = user_id
         rows.append(row)
