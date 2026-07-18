@@ -1325,39 +1325,50 @@ if page == "Setup":
     # ── Preferred Locations ───────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:20px">Preferred Locations</div>', unsafe_allow_html=True)
     _loc_options = [
+        # ── Special ──────────────────────────────────────────────
         "Remote",
-        "Houston, TX",
-        "Austin, TX",
-        "Dallas, TX",
-        "New York, NY",
-        "San Francisco, CA",
-        "Seattle, WA",
-        "Chicago, IL",
-        "Atlanta, GA",
-        "Denver, CO",
-        "Boston, MA",
-        "Washington, DC",
-        "Los Angeles, CA",
-        "Nashville, TN",
-        "Charlotte, NC",
-        "Phoenix, AZ",
+        # ── United States ─────────────────────────────────────────
+        "Atlanta, GA", "Austin, TX", "Baltimore, MD", "Boston, MA",
+        "Charlotte, NC", "Chicago, IL", "Cincinnati, OH", "Cleveland, OH",
+        "Columbus, OH", "Dallas, TX", "Denver, CO", "Detroit, MI",
+        "El Paso, TX", "Fort Worth, TX", "Houston, TX", "Indianapolis, IN",
+        "Jacksonville, FL", "Kansas City, MO", "Las Vegas, NV", "Los Angeles, CA",
+        "Louisville, KY", "Memphis, TN", "Miami, FL", "Milwaukee, WI",
+        "Minneapolis, MN", "Nashville, TN", "New Orleans, LA", "New York, NY",
+        "Oklahoma City, OK", "Orlando, FL", "Philadelphia, PA", "Phoenix, AZ",
+        "Pittsburgh, PA", "Portland, OR", "Raleigh, NC", "Richmond, VA",
+        "Sacramento, CA", "Salt Lake City, UT", "San Antonio, TX", "San Diego, CA",
+        "San Francisco, CA", "San Jose, CA", "Seattle, WA", "St. Louis, MO",
+        "Tampa, FL", "Tucson, AZ", "Virginia Beach, VA", "Washington, DC",
+        # ── Canada ────────────────────────────────────────────────
+        "Toronto, Canada", "Vancouver, Canada", "Montreal, Canada",
+        "Calgary, Canada", "Ottawa, Canada", "Edmonton, Canada",
+        # ── United Kingdom ────────────────────────────────────────
+        "London, UK", "Manchester, UK", "Birmingham, UK", "Edinburgh, UK",
+        # ── Europe ────────────────────────────────────────────────
+        "Amsterdam, Netherlands", "Barcelona, Spain", "Berlin, Germany",
+        "Dublin, Ireland", "Frankfurt, Germany", "Lisbon, Portugal",
+        "Madrid, Spain", "Munich, Germany", "Paris, France", "Zurich, Switzerland",
+        # ── Asia-Pacific ──────────────────────────────────────────
+        "Bangalore, India", "Dubai, UAE", "Hong Kong", "Hyderabad, India",
+        "Melbourne, Australia", "Mumbai, India", "Singapore",
+        "Sydney, Australia", "Tokyo, Japan",
+        # ── Latin America ─────────────────────────────────────────
+        "Bogotá, Colombia", "Buenos Aires, Argentina", "Mexico City, Mexico",
+        "São Paulo, Brazil",
     ]
     _saved_locs = st.session_state.get("preferred_locations") or ["Remote"]
+    # Saved locations may include cities not in the preset list — merge them in so they stay selected
+    _extra_saved = [l for l in _saved_locs if l not in _loc_options]
+    _full_options = _loc_options + _extra_saved
     selected_locations = st.multiselect(
         "Preferred locations",
-        options=_loc_options,
-        default=[l for l in _saved_locs if l in _loc_options],
+        options=_full_options,
+        default=[l for l in _saved_locs if l in _full_options],
         label_visibility="collapsed",
-        help="Jobs will be scraped and scored for these locations. Select Remote to include remote-only boards.",
+        placeholder="Type to search cities or countries…",
+        help="Start typing any city or country — the list filters as you type. Select Remote to include remote-only boards.",
     )
-    _custom_loc = st.text_input(
-        "Add a city not listed (optional)",
-        value="",
-        placeholder="e.g. Miami, FL",
-        label_visibility="collapsed",
-    )
-    if _custom_loc.strip() and _custom_loc.strip() not in selected_locations:
-        selected_locations = selected_locations + [_custom_loc.strip()]
 
     if st.button("Save & Go to Pipeline →", type="primary", use_container_width=True):
         if not extracted_text or len(extracted_text.strip()) < 100:
