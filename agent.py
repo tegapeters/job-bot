@@ -178,8 +178,8 @@ _SALARY_PATTERNS = [
     (r'[Mm]inimum\s+[Ss]alary\s*:.*?(\d[\d,]+).*?[Mm]aximum\s+[Ss]alary\s*:.*?(\d[\d,]+)', 2),
     # Min Salary: $106,500 / Max Salary: $159,500
     (r'[Mm]in(?:imum)?\s*(?:Salary|Pay)?:?\s*\$\s*([\d,]+)\D+[Mm]ax(?:imum)?\s*(?:Salary|Pay)?:?\s*\$\s*([\d,]+)', 2),
-    # $117,500—$172,800 USD  |  $117,500–$172,800  |  $117,500 - $172,800
-    (r'\$\s?([\d,]+)\s*[—–\-]+\s*\$?\s?([\d,]+)\s*(?:USD|/yr|/year|annually)?', 2),
+    # $117,500—$172,800 USD  |  $117,500–$172,800  |  $117,500 - $172,800 a year
+    (r'\$\s?([\d,]+)\s*[—–\-]+\s*\$?\s?([\d,]+)\s*(?:USD|/yr|/year|a year|per year|annually)?', 2),
     # $120K - $160K
     (r'\$\s?([\d]+)[kK]\s*[—–\-]+\s*\$?\s?([\d]+)[kK]', 2),
     # $150,000 to $200,000

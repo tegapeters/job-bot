@@ -59,19 +59,44 @@ def _parse_jobs_from_html(html: str, source_url: str) -> list[dict]:
                     company = _html_lib.unescape(org.get("name", ""))
                 if not title or not url or _is_excluded(title, ""):
                     continue
-                jobs.append({
+
+                # Extract baseSalary from schema.org JobPosting if present
+                salary_range = None
+                bs = item.get("baseSalary")
+                if isinstance(bs, dict):
+                    val = bs.get("value", {})
+                    currency = bs.get("currency", "USD")
+                    if isinstance(val, dict):
+                        lo = val.get("minValue")
+                        hi = val.get("maxValue")
+                        single = val.get("value")
+                        unit = val.get("unitText", "YEAR")
+                        suffix = "/hr" if str(unit).upper() in ("HOUR", "HOURLY") else "/yr"
+                        if lo and hi:
+                            salary_range = f"${int(lo):,} - ${int(hi):,} {suffix}"
+                        elif single:
+                            salary_range = f"${int(single):,} {suffix}"
+
+                raw_desc = item.get("description", "")
+                # Keep enough text to catch inline salary mentions
+                desc = raw_desc[:2000]
+
+                job_entry = {
                     "id": _make_id(url),
                     "source": "linkedin",
                     "title": title,
                     "company": company,
                     "location": "",
                     "url": url.split("?")[0],
-                    "description": item.get("description", "")[:500],
+                    "description": desc,
                     "posted_at": datetime.utcnow().isoformat(),
                     "status": "new",
                     "score": None,
                     "cover_letter": None,
-                })
+                }
+                if salary_range:
+                    job_entry["salary_range"] = salary_range
+                jobs.append(job_entry)
         except Exception:
             pass
 
