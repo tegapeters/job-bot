@@ -3,6 +3,9 @@ from .remotive import scrape_remotive
 from .weworkremotely import scrape_weworkremotely
 from .jobicy import scrape_jobicy
 from .remoteok import scrape_remoteok
+from .adzuna import scrape_adzuna
+from .usajobs import scrape_usajobs
+from .themuse import scrape_themuse
 import inspect
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -53,6 +56,9 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
         ("Remotive",         scrape_remotive),
         ("We Work Remotely", scrape_weworkremotely),
         ("Jobicy",           scrape_jobicy),
+        ("Adzuna",           scrape_adzuna),
+        ("USAJobs",          scrape_usajobs),
+        ("The Muse",         scrape_themuse),
     ]
 
     def _run_scraper(name: str, fn) -> tuple[str, list[dict]]:
@@ -69,7 +75,7 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
         print(f"   → {name}: {len(jobs)} jobs")
         return name, jobs
 
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    with ThreadPoolExecutor(max_workers=8) as pool:
         futures = {pool.submit(_run_scraper, name, fn): name for name, fn in sources}
         for future in as_completed(futures):
             name = futures[future]

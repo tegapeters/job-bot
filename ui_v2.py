@@ -2233,7 +2233,7 @@ elif page == "Run Pipeline":
       </div>
       <div class="pf-row"><span class="ok">✓</span> Salary floor: <span style="color:#F5F4EE">{_salary_label}</span></div>
       <div class="pf-row"><span class="ok">✓</span> Locations: <span style="color:#F5F4EE">{_locs_label}</span></div>
-      <div class="pf-row"><span class="ok">✓</span> Sources: LinkedIn · Indeed · RemoteOK · Remotive · We Work Remotely · Jobicy</div>
+      <div class="pf-row"><span class="ok">✓</span> Sources: LinkedIn · Adzuna · USAJobs · The Muse · RemoteOK · Remotive · We Work Remotely · Jobicy</div>
     </div>
     """, unsafe_allow_html=True)
 

@@ -168,6 +168,16 @@ EVENTBRITE_API_KEY = _secret("EVENTBRITE_API_KEY")
 # ── Anthropic ───────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = _secret("ANTHROPIC_API_KEY")
 
+# ── Adzuna ──────────────────────────────────────────────────────────
+# Free tier at https://developer.adzuna.com (250 req/day)
+ADZUNA_APP_ID  = _secret("ADZUNA_APP_ID")
+ADZUNA_APP_KEY = _secret("ADZUNA_APP_KEY")
+
+# ── USAJobs ─────────────────────────────────────────────────────────
+# Free key at https://developer.usajobs.gov/APIRequest/Index
+USAJOBS_API_KEY = _secret("USAJOBS_API_KEY")
+USAJOBS_EMAIL   = _secret("USAJOBS_EMAIL")
+
 # ── Scoring backend strategy ────────────────────────────────────────
 # claude = current behavior (best quality, highest cost)
 # cheap  = heuristic-only local scoring (lowest cost)
