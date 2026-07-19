@@ -160,6 +160,9 @@ def scrape_linkedin(max_per_role: int = 15, target_roles: list[str] = None,
     if city_locs:
         enc = [l.replace(" ", "+").replace(",", "%2C") for l in city_locs]
         search_matrix.append(("onsite", WORK_TYPES["onsite"], enc))
+        # Hybrid jobs tied to a specific city are still relevant to a city-only user
+        if not wants_remote:
+            search_matrix.append(("hybrid", WORK_TYPES["hybrid"], enc))
 
     for role in roles:
         role_count = 0
