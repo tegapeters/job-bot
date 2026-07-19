@@ -66,13 +66,20 @@ def _scope_id(raw_id: str, user_id: str | None) -> str:
 
 
 def upsert_jobs(jobs: list[dict], user_id: str | None = None):
-    """Insert/update jobs. When user_id is provided, IDs are scoped per user."""
+    """Insert/update jobs. When user_id is provided, IDs are scoped per user.
+
+    Insert-only fields (never overwritten on conflict): status, score,
+    score_reason, seniority, cover_letter — these reflect user actions or
+    prior scoring and must not be reset when the scraper sees the same job again.
+    """
     sb = get_client()
-    rows = []
+    insert_rows = []   # full rows for new jobs
+    update_rows = []   # content-only patches for existing jobs
+
     for j in jobs:
         scoped_id = _scope_id(j["id"], user_id)
-        row = {
-            "id": scoped_id,
+        # Fields safe to refresh on every scrape
+        content = {
             "source": j.get("source", ""),
             "title": j.get("title", ""),
             "company": j.get("company", ""),
@@ -80,39 +87,60 @@ def upsert_jobs(jobs: list[dict], user_id: str | None = None):
             "url": j.get("url", ""),
             "description": (j.get("description") or "")[:5000],
             "posted_at": j.get("posted_at", ""),
+            "salary_range": j.get("salary_range") or "",
+            "salary_match": j.get("salary_match", "Unknown"),
+        }
+        if j.get("tfidf_sim") is not None:
+            content["tfidf_sim"] = j["tfidf_sim"]
+        if j.get("skill_ratio") is not None:
+            content["skill_ratio"] = j["skill_ratio"]
+        if j.get("work_type"):
+            content["work_type"] = j["work_type"]
+
+        # Full row for INSERT (includes status + scoring fields)
+        insert_row = {
+            "id": scoped_id,
+            **content,
             "status": j.get("status", "new"),
             "score": j.get("score"),
             "score_reason": j.get("score_reason", ""),
             "seniority": j.get("seniority", ""),
-            "salary_match": j.get("salary_match", "Unknown"),
-            "salary_range": j.get("salary_range") or "",
             "cover_letter": j.get("cover_letter", ""),
             "scored_by": j.get("scored_by", ""),
         }
-        if j.get("tfidf_sim") is not None:
-            row["tfidf_sim"] = j["tfidf_sim"]
-        if j.get("skill_ratio") is not None:
-            row["skill_ratio"] = j["skill_ratio"]
-        if j.get("work_type"):
-            row["work_type"] = j["work_type"]
         if user_id:
-            row["user_id"] = user_id
-        rows.append(row)
+            insert_row["user_id"] = user_id
+            content["user_id"] = user_id
 
-    if rows:
+        insert_rows.append(insert_row)
+        update_rows.append({"id": scoped_id, **content})
+
+    if not insert_rows:
+        return
+
+    def _safe_upsert(rows, ignore_dupes):
         try:
-            sb.table("job_applications").upsert(rows, on_conflict="id").execute()
+            sb.table("job_applications").upsert(rows, on_conflict="id",
+                                                ignore_duplicates=ignore_dupes).execute()
         except Exception as e:
             if "scored_by" in str(e):
-                # PostgREST schema cache hasn't picked up the scored_by column yet.
-                # Strip it and retry — column will populate once cache reloads.
                 for r in rows:
                     r.pop("scored_by", None)
-                sb.table("job_applications").upsert(rows, on_conflict="id").execute()
-                print("  ⚠️  scored_by column not in schema cache — saved without it (reload cache to fix)")
+                sb.table("job_applications").upsert(rows, on_conflict="id",
+                                                    ignore_duplicates=ignore_dupes).execute()
+                print("  ⚠️  scored_by column not in schema cache — saved without it")
             else:
                 raise
-        print(f"  💾 Saved {len(rows)} jobs to Supabase")
+
+    # Step 1: insert new jobs only (skip if id already exists)
+    _safe_upsert(insert_rows, ignore_dupes=True)
+
+    # Step 2: update content fields on existing jobs (won't touch status/score/cover_letter)
+    # Use upsert with ignore_duplicates=False on content-only rows — safe because
+    # these rows omit status/score so those columns are not overwritten.
+    _safe_upsert(update_rows, ignore_dupes=False)
+
+    print(f"  💾 Saved {len(insert_rows)} jobs to Supabase")
 
 
 def update_status(job_id: str, status: str, user_id: str | None = None):
