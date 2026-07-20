@@ -2308,9 +2308,9 @@ elif page == "Run Pipeline":
     with _mc1:
         scoring_mode = st.selectbox(
             "Scoring mode",
-            ["hybrid", "claude", "cheap"],
+            ["hybrid", "cheap"],
             index=0,
-            help="hybrid = keyword pre-filter + Claude (~60% cost, default) · claude = Claude scores every job (most accurate) · cheap = heuristic only, no LLM",
+            help="hybrid = keyword pre-filter + Claude (recommended) · cheap = heuristic only, no LLM",
         )
     with _mc2:
         enable_letters = st.checkbox(
