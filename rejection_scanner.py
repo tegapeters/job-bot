@@ -152,7 +152,18 @@ def scan_inbox(
     if not applied_jobs:
         return []
 
-    since_date = (datetime.now() - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
+    # Build date with hardcoded English month names — avoids non-ASCII from locale
+    _dt = datetime.now() - timedelta(days=lookback_days)
+    _months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+    since_date = f"{_dt.day:02d}-{_months[_dt.month - 1]}-{_dt.year}"
+
+    # Strip all non-ASCII characters (e.g. \xa0 non-breaking spaces copied from
+    # Google's App Password UI) — IMAP only accepts ASCII on the wire.
+    def _ascii(s: str) -> str:
+        return s.encode("ascii", errors="ignore").decode("ascii")
+
+    gmail_email  = _ascii(gmail_email.strip())
+    app_password = _ascii(app_password.strip())
 
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
