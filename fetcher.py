@@ -121,6 +121,75 @@ def _fetch_and_update(job: dict) -> dict:
     return job
 
 
+_CLOSED_PHRASES = [
+    "no longer accepting applications",
+    "this job is no longer available",
+    "position has been filled",
+    "this posting has expired",
+    "job has expired",
+    "listing has expired",
+    "no longer available",
+    "position is closed",
+    "posting is closed",
+    "application period has closed",
+    "not currently accepting",
+]
+
+# Per-source URL patterns that indicate a closed listing without fetching
+_CLOSED_URL_SIGNALS: dict[str, list[str]] = {
+    "remoteok": ["expired", "closed"],
+    "remotive": ["expired"],
+}
+
+
+def _is_closed(url: str, source: str) -> bool:
+    """Fetch the job URL and check for closed-listing signals. Returns True if closed."""
+    # Quick URL-level check first (no request needed)
+    src = (source or "").lower()
+    for src_key, signals in _CLOSED_URL_SIGNALS.items():
+        if src_key in src and any(s in url.lower() for s in signals):
+            return True
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
+        text = resp.text.lower()
+        # Redirect to homepage / 404 / generic error = closed
+        if resp.status_code in (404, 410):
+            return True
+        return any(phrase in text for phrase in _CLOSED_PHRASES)
+    except Exception:
+        return False  # network error → assume still open
+
+
+def check_closed_listings(jobs: list[dict], workers: int = 6) -> list[str]:
+    """Check a list of jobs for closed listings. Returns list of closed job IDs."""
+    if not jobs:
+        return []
+
+    n = len(jobs)
+    print(f"\n🔍 Checking {n} stale listings for closed postings...")
+    closed_ids: list[str] = []
+    done = 0
+
+    def _check(job: dict) -> tuple[str, bool]:
+        time.sleep(0.1)
+        return job["id"], _is_closed(job.get("url", ""), job.get("source", ""))
+
+    with ThreadPoolExecutor(max_workers=min(workers, n)) as pool:
+        futures = {pool.submit(_check, job): job for job in jobs}
+        for future in as_completed(futures):
+            job = futures[future]
+            job_id, closed = future.result()
+            done += 1
+            if closed:
+                closed_ids.append(job_id)
+                print(f"  [{done}/{n}] ❌ CLOSED  {job['title'][:45]} @ {job.get('company','')}")
+            else:
+                print(f"  [{done}/{n}] ✓ open    {job['title'][:45]} @ {job.get('company','')}")
+
+    print(f"   → {len(closed_ids)} closed out of {n} checked")
+    return closed_ids
+
+
 def enrich_jobs(jobs: list[dict]) -> list[dict]:
     """Fetch full descriptions for LinkedIn jobs in parallel.
     Non-LinkedIn jobs are skipped (descriptions come from scraper API/RSS).

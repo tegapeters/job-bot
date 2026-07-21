@@ -14,7 +14,7 @@ Usage:
 import sys
 from scrapers import scrape_all
 from agent import process_jobs
-from tracker import upsert_jobs, get_all_applications, get_seen_ids
+from tracker import upsert_jobs, get_all_applications, get_seen_ids, get_stale_listings, mark_closed
 
 
 def cmd_scrape():
@@ -38,6 +38,16 @@ def cmd_scrape():
     timings: dict[str, float] = {}
 
     print(f"🚀 Starting job pipeline... (backend={backend})\n")
+
+    # ── Closed-listing sweep before scraping ──────────────────────
+    stale = get_stale_listings(user_id=None, min_days=5, max_score=6)
+    if stale:
+        from fetcher import check_closed_listings
+        closed_ids = check_closed_listings(stale)
+        if closed_ids:
+            n_closed = mark_closed(closed_ids, user_id=None)
+            print(f"  🚫 Marked {n_closed} stale listing(s) as closed\n")
+
     from config import TARGET_ROLES, MIN_SALARY
 
     t = time.perf_counter()

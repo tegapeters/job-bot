@@ -2349,6 +2349,17 @@ elif page == "Run Pipeline":
         if _pruned:
             st.info(f"🗑️ Cleared {_pruned} unreviewed jobs older than 14 days — fresh listings only.")
 
+        # Closed-listing sweep: check 6-and-under jobs sitting 5+ days
+        from tracker import get_stale_listings, mark_closed
+        _stale = get_stale_listings(user_id=_USER_ID, min_days=5, max_score=6)
+        if _stale:
+            with st.spinner(f"Checking {len(_stale)} stale listings for closed postings…"):
+                from fetcher import check_closed_listings
+                _closed_ids = check_closed_listings(_stale)
+                if _closed_ids:
+                    _n_closed = mark_closed(_closed_ids, user_id=_USER_ID)
+                    st.info(f"🚫 Marked {_n_closed} listing(s) as closed — removed from your queue.")
+
         with st.spinner("Scraping jobs from 8 sources in parallel…"):
             from scrapers import scrape_all
             jobs = scrape_all(

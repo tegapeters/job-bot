@@ -548,6 +548,38 @@ def clear_queue(user_id: str | None = None):
     q.execute()
 
 
+def get_stale_listings(user_id: str | None = None, min_days: int = 5,
+                       max_score: int = 6) -> list[dict]:
+    """Return new-status jobs scoring <= max_score that have sat for >= min_days.
+    These are candidates for closed-listing detection."""
+    from datetime import datetime, timezone, timedelta
+    sb = get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=min_days)).isoformat()
+    q = (sb.table("job_applications")
+           .select("id,title,company,url,score,source")
+           .eq("status", "new")
+           .lte("score", max_score)
+           .lt("created_at", cutoff)
+           .order("score", desc=False))
+    if user_id:
+        q = q.eq("user_id", user_id)
+    return q.execute().data or []
+
+
+def mark_closed(job_ids: list[str], user_id: str | None = None) -> int:
+    """Set status=application_closed for the given job IDs. Returns count updated."""
+    if not job_ids:
+        return 0
+    sb = get_client()
+    q = (sb.table("job_applications")
+           .update({"status": "application_closed"})
+           .in_("id", job_ids))
+    if user_id:
+        q = q.eq("user_id", user_id)
+    result = q.execute()
+    return len(result.data or [])
+
+
 def prune_stale_queue(user_id: str | None = None, days: int = 14) -> int:
     """Delete unreviewed (status=new) jobs older than `days` days.
 
