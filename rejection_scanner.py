@@ -1,13 +1,15 @@
 """
-Gmail rejection scanner — IMAP-based.
+Gmail inbox scanner — IMAP-based.
 
-Scans the inbox of the email address you use to apply for jobs,
-finds rejection emails, and matches them against applied jobs in Supabase.
+Scans the inbox of the email address you use to apply for jobs and
+categorises matching emails into three buckets:
+  - interview   : invitation to interview or advance in the process
+  - action       : assessment, scheduling link, or reply needed
+  - rejection    : declined / not moving forward
 
 Credentials are NEVER persisted — they live only in memory for the session.
-To use, you need a Gmail App Password for the applying email:
+To use, you need a Gmail App Password:
   https://myaccount.google.com/apppasswords
-  (Google Account → Security → 2-Step Verification → App passwords)
 """
 import imaplib
 import email as _email_lib
@@ -15,8 +17,8 @@ import re
 from datetime import datetime, timedelta
 from email.header import decode_header as _decode_header
 
-# ── Rejection signal phrases ───────────────────────────────────────────────────
-# Order matters: more specific phrases first to avoid false positives.
+# ── Signal phrase lists ────────────────────────────────────────────────────────
+
 REJECTION_PHRASES = [
     "not moving forward",
     "will not be moving forward",
@@ -38,10 +40,95 @@ REJECTION_PHRASES = [
     "your application was not",
     "unfortunately, we",
     "unfortunately we",
-    "after careful consideration",  # common opener before "we won't be..."
+    "after careful consideration",
 ]
 
-# Domains that send on behalf of companies — check subject/body, not sender domain
+# More specific phrases first — avoids false positives on "next steps" alone
+INTERVIEW_PHRASES = [
+    "invite you to interview",
+    "invited to interview",
+    "schedule an interview",
+    "schedule a call",
+    "schedule time to speak",
+    "schedule a phone",
+    "schedule a video",
+    "like to set up",
+    "would like to connect",
+    "moving you forward",
+    "moving forward with your",
+    "selected you to move forward",
+    "excited to move forward with you",
+    "pleased to move forward",
+    "advance to the next",
+    "advance to the interview",
+    "next round",
+    "next step",
+    "congratulations on moving",
+    "you have been selected",
+    "we'd love to chat",
+    "we would love to chat",
+    "let's find a time",
+]
+
+ACTION_PHRASES = [
+    "please complete the following",
+    "complete the assessment",
+    "complete this assessment",
+    "online assessment",
+    "take-home assignment",
+    "take home assignment",
+    "coding challenge",
+    "technical assessment",
+    "technical screen",
+    "skills assessment",
+    "please reply",
+    "kindly respond",
+    "respond by",
+    "action required",
+    "response required",
+    "reply by",
+    "please schedule",
+    "book a time",
+    "book time",
+    "use the link below to schedule",
+    "calendly",
+    "please confirm your availability",
+    "confirm your attendance",
+    "complete by",
+]
+
+# IMAP search terms — broad enough to pull candidates, phrase lists above do
+# the precise filtering. Keep these short — IMAP BODY search is substring.
+_IMAP_SEARCH_TERMS: dict[str, list[str]] = {
+    "rejection": [
+        "not moving forward",
+        "regret to inform",
+        "not selected",
+        "unfortunately",
+        "decided to pursue",
+        "position has been filled",
+        "after careful consideration",
+    ],
+    "interview": [
+        "invite you to interview",
+        "schedule an interview",
+        "schedule a call",
+        "moving forward with you",
+        "next round",
+        "next step",
+    ],
+    "action": [
+        "complete the assessment",
+        "online assessment",
+        "coding challenge",
+        "take-home",
+        "action required",
+        "please schedule",
+        "calendly",
+        "respond by",
+    ],
+}
+
 _ATS_DOMAINS = {
     "greenhouse.io", "lever.co", "workday.com", "ashbyhq.com",
     "breezy.hr", "smartrecruiters.com", "jobvite.com", "icims.com",
@@ -64,7 +151,7 @@ def _decode_str(value) -> str:
 
 
 def _body_text(msg) -> str:
-    """Extract plain-text body from an email.Message, first 1200 chars."""
+    """Extract plain-text body, first 1500 chars."""
     if msg.is_multipart():
         for part in msg.walk():
             ct = part.get_content_type()
@@ -72,17 +159,28 @@ def _body_text(msg) -> str:
             if ct == "text/plain" and "attachment" not in cd:
                 payload = part.get_payload(decode=True)
                 if payload:
-                    return payload.decode(errors="ignore")[:1200]
+                    return payload.decode(errors="ignore")[:1500]
     else:
         payload = msg.get_payload(decode=True)
         if payload:
-            return payload.decode(errors="ignore")[:1200]
+            return payload.decode(errors="ignore")[:1500]
     return ""
 
 
-def _is_rejection(subject: str, body: str) -> bool:
+def _categorise(subject: str, body: str) -> str | None:
+    """
+    Return 'interview', 'action', 'rejection', or None.
+    Order matters: interview checked before rejection to avoid
+    "we're moving forward" getting swallowed by a rejection pattern.
+    """
     combined = (subject + " " + body).lower()
-    return any(phrase in combined for phrase in REJECTION_PHRASES)
+    if any(p in combined for p in INTERVIEW_PHRASES):
+        return "interview"
+    if any(p in combined for p in ACTION_PHRASES):
+        return "action"
+    if any(p in combined for p in REJECTION_PHRASES):
+        return "rejection"
+    return None
 
 
 def _company_slug(name: str) -> str:
@@ -90,30 +188,19 @@ def _company_slug(name: str) -> str:
 
 
 def _match_score(sender: str, subject: str, body: str, company: str, title: str) -> float:
-    """
-    Returns 0.0–1.0 confidence that this email is about <company>/<title>.
-    Strategy:
-      1. Sender domain contains company slug         → 0.90
-      2. ATS domain + subject contains company name  → 0.85
-      3. Subject contains company name               → 0.80
-      4. Body contains company name                  → 0.65
-    """
     cslug = _company_slug(company)
     if not cslug:
         return 0.0
 
-    # 1. Check sender domain (skip ATS domains)
     sender_domain = re.search(r"@([\w.-]+)", sender.lower())
     if sender_domain:
         domain = sender_domain.group(1)
         if not any(ats in domain for ats in _ATS_DOMAINS):
-            # strip subdomains: hr.acme.com → acme
             parts = domain.split(".")
             core = parts[-2] if len(parts) >= 2 else parts[0]
             if cslug in core or core in cslug:
                 return 0.90
 
-    # 2–4. Check subject and body
     subj_lower = subject.lower()
     body_lower = body.lower()
     company_lower = company.lower()
@@ -137,28 +224,28 @@ def scan_inbox(
     app_password: str,
     applied_jobs: list[dict],
     lookback_days: int = 90,
-) -> list[dict]:
+) -> dict[str, list[dict]]:
     """
-    Connect to Gmail via IMAP, find rejection emails, match against applied_jobs.
+    Scan Gmail inbox and return categorised matches against applied_jobs.
 
-    Returns list of match dicts:
-        job          — the matched job dict from applied_jobs
-        email_from   — sender string
-        email_subject
-        email_date
-        snippet      — first 300 chars of body
-        confidence   — 0.0–1.0 match score
+    Returns:
+        {
+          "interview":  [...],   # invitations to advance / schedule
+          "action":     [...],   # assessments, scheduling links, reply-needed
+          "rejection":  [...],   # declined emails
+        }
+
+    Each item in a list:
+        job, email_from, email_subject, email_date, snippet, confidence, category
     """
+    empty = {"interview": [], "action": [], "rejection": []}
     if not applied_jobs:
-        return []
+        return empty
 
-    # Build date with hardcoded English month names — avoids non-ASCII from locale
     _dt = datetime.now() - timedelta(days=lookback_days)
     _months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
     since_date = f"{_dt.day:02d}-{_months[_dt.month - 1]}-{_dt.year}"
 
-    # Strip all non-ASCII characters (e.g. \xa0 non-breaking spaces copied from
-    # Google's App Password UI) — IMAP only accepts ASCII on the wire.
     def _ascii(s: str) -> str:
         return s.encode("ascii", errors="ignore").decode("ascii")
 
@@ -174,28 +261,19 @@ def scan_inbox(
             f"Gmail login failed — check email/app password. ({e})"
         ) from e
 
-    # Collect message IDs matching any rejection phrase (IMAP OR not supported,
-    # so we union the per-phrase searches)
+    # Collect candidate message IDs across all categories
     candidate_ids: set[bytes] = set()
-    search_phrases = [
-        "not moving forward",
-        "regret to inform",
-        "not selected",
-        "unfortunately",
-        "decided to pursue",
-        "position has been filled",
-        "after careful consideration",
-    ]
-    for phrase in search_phrases:
-        try:
-            _, data = mail.search(None, f'SINCE {since_date} BODY "{phrase}"')
-            if data and data[0]:
-                candidate_ids.update(data[0].split())
-        except Exception:
-            continue
+    for _cat, terms in _IMAP_SEARCH_TERMS.items():
+        for phrase in terms:
+            try:
+                _, data = mail.search(None, f'SINCE {since_date} BODY "{phrase}"')
+                if data and data[0]:
+                    candidate_ids.update(data[0].split())
+            except Exception:
+                continue
 
-    matches: list[dict] = []
-    seen_job_ids: set[str] = set()  # avoid duplicate matches per job
+    results: dict[str, list[dict]] = {"interview": [], "action": [], "rejection": []}
+    seen_job_ids: set[str] = set()
 
     for msg_bytes_id in candidate_ids:
         try:
@@ -211,37 +289,36 @@ def scan_inbox(
         date    = msg.get("Date", "")
         body    = _body_text(msg)
 
-        if not _is_rejection(subject, body):
+        category = _categorise(subject, body)
+        if not category:
             continue
 
-        # Try to match against each applied job
         best_score = 0.0
         best_job   = None
         for job in applied_jobs:
             if job.get("id") in seen_job_ids:
                 continue
-            score = _match_score(
-                sender, subject, body,
-                job.get("company", ""),
-                job.get("title", ""),
-            )
+            score = _match_score(sender, subject, body,
+                                  job.get("company", ""), job.get("title", ""))
             if score > best_score:
                 best_score = score
                 best_job   = job
 
         if best_job and best_score >= 0.60:
             seen_job_ids.add(best_job["id"])
-            matches.append({
+            results[category].append({
                 "job":           best_job,
                 "email_from":    sender,
                 "email_subject": subject,
                 "email_date":    date,
                 "snippet":       body[:300].strip(),
                 "confidence":    best_score,
+                "category":      category,
             })
 
     mail.logout()
 
-    # Sort by confidence descending
-    matches.sort(key=lambda m: m["confidence"], reverse=True)
-    return matches
+    for cat in results:
+        results[cat].sort(key=lambda m: m["confidence"], reverse=True)
+
+    return results

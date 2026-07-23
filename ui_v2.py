@@ -1784,63 +1784,104 @@ elif page == "Applied":
 
     if _gmail_on and _gmail_email and _gmail_pw:
         # Auto-scan once per session on first Applied page load
-        _scan_done = "_rejection_matches" in st.session_state
+        _scan_done = "_gmail_scan_results" in st.session_state
         if not _scan_done:
-            with st.spinner("📬 Scanning Gmail for rejection emails…"):
+            with st.spinner("📬 Scanning Gmail for rejections, interviews, and action items…"):
                 try:
                     from rejection_scanner import scan_inbox
-                    _auto_matches = scan_inbox(_gmail_email, _gmail_pw, applied, lookback_days=90)
-                    st.session_state["_rejection_matches"] = _auto_matches
+                    _scan_results = scan_inbox(_gmail_email, _gmail_pw, applied, lookback_days=90)
+                    st.session_state["_gmail_scan_results"] = _scan_results
                 except ConnectionError as _ce:
                     st.error(str(_ce))
-                    st.session_state["_rejection_matches"] = None
+                    st.session_state["_gmail_scan_results"] = None
                 except Exception as _ex:
                     st.error(f"Gmail scan failed: {_ex}")
-                    st.session_state["_rejection_matches"] = None
+                    st.session_state["_gmail_scan_results"] = None
 
-        # Re-scan button for manual refresh
         _scan_col, _ = st.columns([2, 5])
         with _scan_col:
             if st.button("Re-scan Gmail", type="secondary", use_container_width=True):
                 with st.spinner("Scanning inbox…"):
                     try:
                         from rejection_scanner import scan_inbox
-                        _matches = scan_inbox(_gmail_email, _gmail_pw, applied, lookback_days=90)
-                        st.session_state["_rejection_matches"] = _matches
+                        _scan_results = scan_inbox(_gmail_email, _gmail_pw, applied, lookback_days=90)
+                        st.session_state["_gmail_scan_results"] = _scan_results
                     except ConnectionError as _ce:
                         st.error(str(_ce))
-                        st.session_state.pop("_rejection_matches", None)
+                        st.session_state.pop("_gmail_scan_results", None)
                     except Exception as _ex:
                         st.error(f"Scan failed: {_ex}")
-                        st.session_state.pop("_rejection_matches", None)
+                        st.session_state.pop("_gmail_scan_results", None)
 
-        _matches = st.session_state.get("_rejection_matches")
-        if _matches is not None:
-            if not _matches:
-                st.success("No rejection emails found for your applied jobs. 🎉")
+        _scan = st.session_state.get("_gmail_scan_results")
+        if _scan is not None:
+            _n_interview  = len(_scan.get("interview", []))
+            _n_action     = len(_scan.get("action", []))
+            _n_rejection  = len(_scan.get("rejection", []))
+            _n_total      = _n_interview + _n_action + _n_rejection
+
+            if _n_total == 0:
+                st.success("Inbox clean — no rejections, interview invites, or action items found. 🎉")
             else:
-                st.warning(f"Found **{len(_matches)}** possible rejection email{'s' if len(_matches) != 1 else ''}. Review and confirm below.")
-                _to_mark: list[str] = []
-                for _m in _matches:
-                    _j = _m["job"]
-                    _conf = int(_m["confidence"] * 100)
-                    with st.expander(f"{'🔴' if _conf >= 80 else '🟡'} {_j.get('title')} @ {_j.get('company')}  —  {_conf}% match"):
-                        st.markdown(f"**From:** {_m['email_from']}")
-                        st.markdown(f"**Subject:** {_m['email_subject']}")
-                        st.markdown(f"**Date:** {_m['email_date']}")
-                        st.markdown(f"**Snippet:**")
-                        st.caption(_m["snippet"])
-                        if st.checkbox(f"Mark as rejected", key=f"rej_check_{_j['id']}", value=_conf >= 80):
-                            _to_mark.append(_j["id"])
+                # ── Interview invites ──────────────────────────────────
+                if _n_interview:
+                    st.markdown(f"#### 🟢 Interview Invites ({_n_interview})")
+                    _to_interview: list[str] = []
+                    for _m in _scan["interview"]:
+                        _j = _m["job"]
+                        _conf = int(_m["confidence"] * 100)
+                        with st.expander(f"{'🟢' if _conf >= 80 else '🟡'} {_j.get('title')} @ {_j.get('company')}  —  {_conf}% match"):
+                            st.markdown(f"**From:** {_m['email_from']}")
+                            st.markdown(f"**Subject:** {_m['email_subject']}")
+                            st.markdown(f"**Date:** {_m['email_date']}")
+                            st.caption(_m["snippet"])
+                            if st.checkbox("Move to Interview", key=f"int_check_{_j['id']}", value=_conf >= 80):
+                                _to_interview.append(_j["id"])
+                    if _to_interview:
+                        if st.button(f"✅ Mark {len(_to_interview)} as Interview", type="primary", key="btn_mark_interview"):
+                            from tracker import update_status
+                            for _jid in _to_interview:
+                                update_status(_jid, "interview", user_id=_USER_ID)
+                            st.success(f"Moved {len(_to_interview)} job(s) to Interview.")
+                            st.session_state.pop("_gmail_scan_results", None)
+                            st.rerun()
 
-                if _to_mark:
-                    if st.button(f"✅ Mark {len(_to_mark)} job{'s' if len(_to_mark) != 1 else ''} as Rejected", type="primary"):
-                        from tracker import update_status
-                        for _jid in _to_mark:
-                            update_status(_jid, "rejected", user_id=_USER_ID)
-                        st.success(f"Marked {len(_to_mark)} job(s) as rejected.")
-                        st.session_state.pop("_rejection_matches", None)
-                        st.rerun()
+                # ── Action required ────────────────────────────────────
+                if _n_action:
+                    st.markdown(f"#### 🟡 Action Required ({_n_action})")
+                    for _m in _scan["action"]:
+                        _j = _m["job"]
+                        _conf = int(_m["confidence"] * 100)
+                        with st.expander(f"⚡ {_j.get('title')} @ {_j.get('company')}  —  {_conf}% match"):
+                            st.markdown(f"**From:** {_m['email_from']}")
+                            st.markdown(f"**Subject:** {_m['email_subject']}")
+                            st.markdown(f"**Date:** {_m['email_date']}")
+                            st.caption(_m["snippet"])
+                            st.markdown(f"[Open job posting]({_j.get('url', '#')})")
+
+                # ── Rejections ─────────────────────────────────────────
+                if _n_rejection:
+                    st.markdown(f"#### 🔴 Rejections ({_n_rejection})")
+                    _to_reject: list[str] = []
+                    for _m in _scan["rejection"]:
+                        _j = _m["job"]
+                        _conf = int(_m["confidence"] * 100)
+                        with st.expander(f"{'🔴' if _conf >= 80 else '🟡'} {_j.get('title')} @ {_j.get('company')}  —  {_conf}% match"):
+                            st.markdown(f"**From:** {_m['email_from']}")
+                            st.markdown(f"**Subject:** {_m['email_subject']}")
+                            st.markdown(f"**Date:** {_m['email_date']}")
+                            st.caption(_m["snippet"])
+                            if st.checkbox("Mark as rejected", key=f"rej_check_{_j['id']}", value=_conf >= 80):
+                                _to_reject.append(_j["id"])
+                    if _to_reject:
+                        if st.button(f"✅ Mark {len(_to_reject)} as Rejected", type="primary", key="btn_mark_rejected"):
+                            from tracker import update_status
+                            for _jid in _to_reject:
+                                update_status(_jid, "rejected", user_id=_USER_ID)
+                            st.success(f"Marked {len(_to_reject)} job(s) as rejected.")
+                            st.session_state.pop("_gmail_scan_results", None)
+                            st.rerun()
+
     elif _gmail_on and (not _gmail_email or not _gmail_pw):
         st.caption("📬 Gmail scanning is enabled — add your credentials on the Setup page to activate it.")
 
