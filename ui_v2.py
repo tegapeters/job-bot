@@ -761,11 +761,14 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 buf = io.BytesIO()
                 doc.save(buf)
                 buf.seek(0)
-                safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", f"{job.get('company','')}_{job.get('title','')}").strip("_")
+                _resume = st.session_state.get("resume_text") or ""
+                _candidate = next((l.strip() for l in _resume.splitlines() if l.strip()), "CoverLetter")
+                _candidate = re.sub(r"[^a-zA-Z0-9 ]+", "", _candidate).strip().replace(" ", "_")[:30]
+                _co = re.sub(r"[^a-zA-Z0-9]+", "_", job.get("company", "Company")).strip("_")
                 st.download_button(
                     "⬇ .docx",
                     data=buf,
-                    file_name=f"cover_letter_{safe_name}.docx",
+                    file_name=f"{_candidate}_{_co}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     key=f"dl_{job['id']}",
                 )
