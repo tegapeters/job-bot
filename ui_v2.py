@@ -1003,73 +1003,46 @@ Keep answers concise unless asked for detail. Never invent job details — only 
 Do not give legal or financial advice."""
 
 
-def _render_assistant_panel(page_key: str, page_context: str = "") -> None:
-    """Inline assistant panel — collapsible expander at the bottom of any page."""
-    resume_text = st.session_state.get("resume_text") or ""
-    if not resume_text:
-        return  # silently skip — no resume loaded yet
+def _build_dynamic_suggestions(apps: list[dict]) -> list[str]:
+    """Generate contextual starter suggestions based on the live pipeline."""
+    interviews  = [a for a in apps if a.get("status") == "interview"]
+    applied     = [a for a in apps if a.get("status") == "applied"]
+    new_jobs    = [a for a in apps if a.get("status") == "new"]
+    strong      = [j for j in new_jobs if (j.get("score") or 0) >= 8]
 
-    hist_key = f"_chat_{page_key}"
-    if hist_key not in st.session_state:
-        st.session_state[hist_key] = []
+    suggestions = []
 
-    history = st.session_state[hist_key]
-    has_history = bool(history)
+    # Interview prep — most urgent, show first
+    for iv in interviews[:2]:
+        suggestions.append(
+            f"Help me prep for my {iv.get('company')} interview — what should I focus on?"
+        )
 
-    import anthropic as _anthropic
+    # Strong leads if any
+    if strong:
+        top = strong[0]
+        suggestions.append(
+            f"I have a {top.get('score')}/10 match at {top.get('company')} — help me tailor my application."
+        )
 
-    api_key = None
-    try:
-        from config import ANTHROPIC_API_KEY
-        api_key = ANTHROPIC_API_KEY
-    except Exception:
-        pass
+    # Applied follow-up
+    if applied:
+        suggestions.append("Draft a follow-up email for a job I applied to last week.")
 
-    def _stream_gen(hist):
-        """Generator that yields text chunks from Claude streaming API."""
-        _client = _anthropic.Anthropic(api_key=api_key)
-        with _client.messages.stream(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=[{"type": "text", "text": _build_assistant_system_prompt(page_context), "cache_control": {"type": "ephemeral"}}],
-            messages=hist,
-            extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-        ) as stream:
-            for text in stream.text_stream:
-                yield text
+    # Always-useful fallbacks
+    fallbacks = [
+        "Which jobs in my queue should I apply to first?",
+        "What skills am I missing for the roles I'm targeting?",
+        "Which of my 6-scoring jobs are still worth applying to?",
+        "How should I position my Oracle experience for data engineering roles?",
+    ]
+    for f in fallbacks:
+        if len(suggestions) >= 4:
+            break
+        if f not in suggestions:
+            suggestions.append(f)
 
-    label = f"Ask the Assistant {'💬' if has_history else '🤖'}"
-    with st.expander(label, expanded=has_history):
-        # Render history
-        for msg in history:
-            avatar = "👤" if msg["role"] == "user" else "🤖"
-            with st.chat_message(msg["role"], avatar=avatar):
-                st.markdown(msg["content"])
-
-        # Stream any pending unanswered user message
-        if history and history[-1]["role"] == "user":
-            with st.chat_message("assistant", avatar="🤖"):
-                response = st.write_stream(_stream_gen(history))
-            st.session_state[hist_key].append({"role": "assistant", "content": response})
-
-        # Input — text field and Send button side-by-side in the form
-        with st.form(f"asst_form_{page_key}", clear_on_submit=True):
-            c1, c2 = st.columns([5, 1])
-            user_input = c1.text_input(
-                "panel_input",
-                label_visibility="collapsed",
-                placeholder="Ask about your job search…",
-            )
-            submitted = c2.form_submit_button("Send", type="primary", use_container_width=True)
-
-        if submitted and user_input.strip():
-            st.session_state[hist_key].append({"role": "user", "content": user_input.strip()})
-            st.rerun()
-
-        if history:
-            if st.button("Clear", key=f"clear_asst_{page_key}", type="secondary"):
-                st.session_state[hist_key] = []
-                st.rerun()
+    return suggestions[:4]
 
 
 def metric(col, label, value, sub="", accent=False):
@@ -2613,211 +2586,210 @@ elif page == "Assistant":
 
     import anthropic as _anthropic
 
-    # ── Load chat history from Supabase on first visit ─────────────
+    # ── Load chat history once per session ─────────────────────────
     if "_chat_history_loaded" not in st.session_state:
-        if _USER_ID:
-            try:
-                st.session_state["_chat_history"] = load_chat_history(_USER_ID)
-            except Exception:
-                st.session_state["_chat_history"] = []
-        else:
-            st.session_state["_chat_history"] = []
+        st.session_state["_chat_history"] = (
+            load_chat_history(_USER_ID) if _USER_ID else []
+        )
         st.session_state["_chat_history_loaded"] = True
-
     if "_chat_history" not in st.session_state:
         st.session_state["_chat_history"] = []
 
-    # ── Layout: chat (65%) | context panel (35%) ───────────────────
+    # ── Pull live pipeline data (single query) ──────────────────────
+    try:
+        _asst_apps = get_all_applications(user_id=_USER_ID) or []
+    except Exception:
+        _asst_apps = []
+
+    _asst_new        = [a for a in _asst_apps if a.get("status") == "new"]
+    _asst_applied    = [a for a in _asst_apps if a.get("status") == "applied"]
+    _asst_interviews = [a for a in _asst_apps if a.get("status") == "interview"]
+    _asst_strong     = len([j for j in _asst_new if (j.get("score") or 0) >= 8])
+    _asst_solid      = len([j for j in _asst_new if (j.get("score") or 0) == 7])
+    _asst_consider   = len([j for j in _asst_new if (j.get("score") or 0) == 6])
+    _asst_queue      = sorted(
+        [a for a in _asst_new if (a.get("score") or 0) >= 6],
+        key=lambda x: x.get("score") or 0, reverse=True
+    )
+
+    def _save_history():
+        if _USER_ID:
+            try:
+                save_chat_history(_USER_ID, st.session_state["_chat_history"])
+            except Exception:
+                pass
+
+    def _stream_response(history: list[dict]) -> str:
+        _client = _anthropic.Anthropic()
+        _sys = _build_assistant_system_prompt("Assistant")
+
+        def _gen():
+            with _client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=1500,
+                system=[{"type": "text", "text": _sys, "cache_control": {"type": "ephemeral"}}],
+                messages=history,
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+
+        with st.chat_message("assistant", avatar="🤖"):
+            response = st.write_stream(_gen())
+        return response
+
+    # ── Layout: chat (65%) | slim context panel (35%) ──────────────
     chat_col, ctx_col = st.columns([13, 7])
 
+    # ── RIGHT PANEL — pipeline snapshot + job selector only ─────────
     with ctx_col:
-        st.markdown('<div class="section-label">Context</div>', unsafe_allow_html=True)
-
-        # Resume badge
-        resume_preview = resume_text[:300].replace("\n", " ").strip()
-        if len(resume_text) > 300:
-            resume_preview += "…"
+        # Pipeline snapshot
         st.markdown(f"""
-        <div style="background:#131315;border:1px solid #1f1f22;border-radius:8px;padding:12px 14px;margin-bottom:12px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#D4FF3A;letter-spacing:0.15em;margin-bottom:6px">✓ FULL RESUME LOADED</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8B8B85;line-height:1.5">{resume_preview}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Queue summary
-        try:
-            _ctx_apps = get_all_applications(user_id=_USER_ID) or []
-        except Exception:
-            _ctx_apps = []
-        _ctx_new = [a for a in _ctx_apps if a.get("status") == "new"]
-        _ctx_queue = sorted(
-            [a for a in _ctx_new if (a.get("score") or 0) >= 6],
-            key=lambda x: x.get("score") or 0, reverse=True
-        )
-        _ctx_applied = [a for a in _ctx_apps if a.get("status") == "applied"]
-        _ctx_interviews = [a for a in _ctx_apps if a.get("status") == "interview"]
-        _ctx_strong = len([j for j in _ctx_new if (j.get("score") or 0) >= 8])
-        _ctx_solid  = len([j for j in _ctx_new if (j.get("score") or 0) == 7])
-        _ctx_consider = len([j for j in _ctx_new if (j.get("score") or 0) == 6])
-
-        st.markdown(f"""
-        <div style="background:#131315;border:1px solid #1f1f22;border-radius:8px;padding:12px 14px;margin-bottom:12px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:8px">PIPELINE SNAPSHOT</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#F5F4EE;line-height:1.8">
-            <span style="color:#D4FF3A">{_ctx_strong}</span> strong (8+) &nbsp;·&nbsp;
-            <span style="color:#D4FF3A">{_ctx_solid}</span> solid (7) &nbsp;·&nbsp;
-            <span style="color:#D4FF3A">{_ctx_consider}</span> consider (6)<br>
-            <span style="color:#D4FF3A">{len(_ctx_applied)}</span> applied &nbsp;·&nbsp;
-            <span style="color:#D4FF3A">{len(_ctx_interviews)}</span> interviews
+        <div style="background:#131315;border:1px solid #1f1f22;border-radius:8px;padding:14px 16px;margin-bottom:12px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:10px">PIPELINE</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#F5F4EE;line-height:2">
+            <span style="color:#D4FF3A;font-size:15px">{_asst_strong}</span> <span style="color:#4A4A45">strong (8+)</span><br>
+            <span style="color:#F5C842;font-size:15px">{_asst_solid}</span> <span style="color:#4A4A45">solid (7)</span><br>
+            <span style="color:#8B8B85;font-size:15px">{_asst_consider}</span> <span style="color:#4A4A45">consider (6)</span>
+          </div>
+          <div style="border-top:1px solid #1f1f22;margin-top:10px;padding-top:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#4A4A45">
+            {len(_asst_applied)} applied &nbsp;·&nbsp; {len(_asst_interviews)} interview{"s" if len(_asst_interviews) != 1 else ""}
           </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Top 5 queue jobs (6+)
-        if _ctx_queue[:5]:
-            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:6px">TOP UNREVIEWED JOBS</div>', unsafe_allow_html=True)
-            for _j in _ctx_queue[:5]:
-                _score = _j.get('score') or 0
-                _color = "#D4FF3A" if _score >= 8 else "#F5C842" if _score >= 7 else "#8B8B85"
+        # Active interviews — prominent if any
+        if _asst_interviews:
+            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#D4FF3A;letter-spacing:0.1em;margin-bottom:6px">ACTIVE INTERVIEWS</div>', unsafe_allow_html=True)
+            for _iv in _asst_interviews:
                 st.markdown(f"""
-                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8B8B85;padding:4px 0;border-bottom:1px solid #1f1f22">
-                  <span style="color:{_color}">{_score}/10</span> {_j.get('title', '')[:30]} @ {_j.get('company', '')[:20]}
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#F5F4EE;padding:5px 0;border-bottom:1px solid #1f1f22">
+                  {_iv.get('title','')[:32]}<br><span style="color:#4A4A45">{_iv.get('company','')[:28]}</span>
                 </div>""", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
 
-        # Job context loader
-        if _ctx_queue:
-            st.markdown('<div class="section-label">Load a job into chat</div>', unsafe_allow_html=True)
-            _job_options = ["— select a job —"] + [
-                f"{j.get('score')}/10 · {j.get('title','')[:35]} @ {j.get('company','')[:20]}"
-                for j in _ctx_queue[:20]
+        # Job selector — selecting auto-primes context, no extra button
+        if _asst_queue:
+            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:6px">LOAD A JOB INTO CHAT</div>', unsafe_allow_html=True)
+            _job_options = ["— select to focus chat —"] + [
+                f"{j.get('score')}/10 · {j.get('title','')[:30]} @ {j.get('company','')[:18]}"
+                for j in _asst_queue[:25]
             ]
-            _selected_job_label = st.selectbox(
-                "Load job into context",
+            _prev_selection = st.session_state.get("_asst_prev_job_sel", "— select to focus chat —")
+            _selected_label = st.selectbox(
+                "job_select",
                 _job_options,
                 key="asst_job_selector",
                 label_visibility="collapsed",
             )
-            if _selected_job_label != "— select a job —":
-                _sel_idx = _job_options.index(_selected_job_label) - 1
-                _sel_job = _ctx_queue[_sel_idx]
-                if st.button("📎 Add job + company research", key="asst_inject_job", use_container_width=True):
-                    from researcher import research_company, load_cached
-                    _co = _sel_job.get("company", "")
-                    with st.spinner(f"Loading {_co} research…"):
-                        _cr = load_cached(_co) or research_company(_co, job_title=_sel_job.get("title", ""))
-                    st.session_state["_asst_job_context"] = _sel_job
+            # Auto-prime on selection change — no extra button needed
+            if _selected_label != "— select to focus chat —" and _selected_label != _prev_selection:
+                _sel_idx = _job_options.index(_selected_label) - 1
+                _sel_job = _asst_queue[_sel_idx]
+                st.session_state["_asst_job_context"] = _sel_job
+                st.session_state["_asst_prev_job_sel"] = _selected_label
+                # Fetch company research in background
+                try:
+                    from researcher import load_cached, research_company as _rc
+                    _cr = load_cached(_sel_job.get("company", ""))
+                    if not _cr:
+                        with st.spinner(f"Loading {_sel_job.get('company','')} research…"):
+                            _cr = _rc(_sel_job.get("company", ""), job_title=_sel_job.get("title", ""))
                     st.session_state["_asst_company_research"] = _cr
-                    st.success(f"✓ {_sel_job.get('title')} @ {_co} loaded with company research.")
-
-        # Quick-action buttons
-        st.markdown('<div class="section-label" style="margin-top:16px">Quick actions</div>', unsafe_allow_html=True)
-        _quick_actions = [
-            "Which jobs should I apply to first — walk me through the top 5.",
-            "What skills am I missing for the roles I'm targeting?",
-            "Which of my 6-scoring jobs are still worth applying to?",
-            "Draft a follow-up email for a job I applied to 2 weeks ago.",
-        ]
-        for _qa in _quick_actions:
-            if st.button(_qa, key=f"qa_{_qa[:25]}", use_container_width=True):
-                st.session_state["_chat_history"].append({"role": "user", "content": _qa})
-                if _USER_ID:
-                    try:
-                        save_chat_history(_USER_ID, st.session_state["_chat_history"])
-                    except Exception:
-                        pass
+                except Exception:
+                    st.session_state["_asst_company_research"] = None
                 st.rerun()
 
+            # Show loaded job badge
+            _loaded = st.session_state.get("_asst_job_context")
+            if _loaded and _selected_label != "— select to focus chat —":
+                st.markdown(f"""
+                <div style="background:#0d1f0d;border:1px solid #1a3a1a;border-radius:6px;padding:8px 10px;margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:10px">
+                  <span style="color:#D4FF3A">✓ loaded</span><br>
+                  <span style="color:#8B8B85">{_loaded.get('title','')[:35]}</span><br>
+                  <span style="color:#4A4A45">{_loaded.get('company','')}</span>
+                </div>""", unsafe_allow_html=True)
+                if st.button("✕ Clear job context", key="clear_job_ctx", use_container_width=True):
+                    st.session_state.pop("_asst_job_context", None)
+                    st.session_state.pop("_asst_company_research", None)
+                    st.session_state["_asst_prev_job_sel"] = "— select to focus chat —"
+                    st.rerun()
+
+        # Resume badge — compact, at bottom
+        st.markdown(f"""
+        <div style="margin-top:16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#4A4A45;padding:8px 0;border-top:1px solid #1f1f22">
+          <span style="color:#D4FF3A">✓</span> Full resume in context ({len(resume_text):,} chars)
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── LEFT PANEL — chat ───────────────────────────────────────────
     with chat_col:
-        def _stream_response(history: list[dict]) -> str:
-            _client = _anthropic.Anthropic()
-            _sys_prompt = _build_assistant_system_prompt("Assistant page — full chat view")
+        # Header row: title + clear button
+        _h1, _h2 = st.columns([5, 1])
+        with _h2:
+            if st.session_state["_chat_history"]:
+                if st.button("New chat", key="clear_chat", type="secondary", use_container_width=True):
+                    st.session_state["_chat_history"] = []
+                    if _USER_ID:
+                        try:
+                            clear_chat_history(_USER_ID)
+                        except Exception:
+                            pass
+                    st.rerun()
 
-            def _gen():
-                with _client.messages.stream(
-                    model="claude-sonnet-4-6",
-                    max_tokens=1500,
-                    system=[{"type": "text", "text": _sys_prompt, "cache_control": {"type": "ephemeral"}}],
-                    messages=history,
-                    extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-                ) as stream:
-                    for text in stream.text_stream:
-                        yield text
-
-            with st.chat_message("assistant", avatar="🤖"):
-                response = st.write_stream(_gen())
-            return response
-
-        # Suggested starters (only when empty)
+        # Dynamic suggestions — empty state only
         if not st.session_state["_chat_history"]:
-            st.markdown('<div class="section-label">Start here</div>', unsafe_allow_html=True)
-            suggestions = [
-                "Which jobs should I apply to first — walk me through the top 5.",
-                "What skills am I missing for the roles I'm targeting?",
-                "Which of my 6-scoring jobs are worth applying to anyway?",
-                "Write a follow-up email for a job I applied to last week.",
-            ]
-            s_col1, s_col2 = st.columns(2)
-            for i, suggestion in enumerate(suggestions):
-                _c = s_col1 if i % 2 == 0 else s_col2
-                with _c:
-                    if st.button(suggestion, key=f"sug_{i}", use_container_width=True):
-                        st.session_state["_chat_history"].append({"role": "user", "content": suggestion})
-                        if _USER_ID:
-                            try:
-                                save_chat_history(_USER_ID, st.session_state["_chat_history"])
-                            except Exception:
-                                pass
+            _suggestions = _build_dynamic_suggestions(_asst_apps)
+            _sc1, _sc2 = st.columns(2)
+            for _i, _sug in enumerate(_suggestions):
+                _sc = _sc1 if _i % 2 == 0 else _sc2
+                with _sc:
+                    if st.button(_sug, key=f"sug_{_i}", use_container_width=True):
+                        _full = _sug
+                        # Auto-inject loaded job context into suggestion if relevant
+                        _jc = st.session_state.get("_asst_job_context")
+                        if _jc and any(w in _sug.lower() for w in ["interview", "tailor", "application", "company"]):
+                            _full = (
+                                f"{_sug}\n\n[JOB CONTEXT]\nTitle: {_jc.get('title')} @ {_jc.get('company')}\n"
+                                f"Score: {_jc.get('score')}/10 — {_jc.get('score_reason','')}\n"
+                                f"Description:\n{(_jc.get('description') or '')[:2000]}"
+                            )
+                        st.session_state["_chat_history"].append({"role": "user", "content": _full})
+                        _save_history()
                         st.rerun()
+            st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
-        # Render history
-        for msg in st.session_state["_chat_history"]:
-            avatar = "👤" if msg["role"] == "user" else "🤖"
-            with st.chat_message(msg["role"], avatar=avatar):
-                st.markdown(msg["content"])
+        # Render chat history
+        for _msg in st.session_state["_chat_history"]:
+            _avatar = "👤" if _msg["role"] == "user" else "🤖"
+            # Strip injected context blocks from display — show clean user text only
+            _display = re.sub(r"\n\n\[JOB CONTEXT(?:[^\]]*)?\].*", "", _msg["content"], flags=re.DOTALL).strip()
+            with st.chat_message(_msg["role"], avatar=_avatar):
+                st.markdown(_display)
 
-        # Stream pending unanswered user message
-        history = st.session_state["_chat_history"]
-        if history and history[-1]["role"] == "user":
-            response = _stream_response(history)
-            st.session_state["_chat_history"].append({"role": "assistant", "content": response})
-            if _USER_ID:
-                try:
-                    save_chat_history(_USER_ID, st.session_state["_chat_history"])
-                except Exception:
-                    pass
+        # Stream pending response
+        _history = st.session_state["_chat_history"]
+        if _history and _history[-1]["role"] == "user":
+            _resp = _stream_response(_history)
+            st.session_state["_chat_history"].append({"role": "assistant", "content": _resp})
+            _save_history()
             st.rerun()
 
-        # Input
-        if prompt := st.chat_input("Ask about your job search…"):
-            full_prompt = prompt
-            # Inject job context + company research if loaded
-            _job_ctx = st.session_state.pop("_asst_job_context", None)
-            _cr_ctx = st.session_state.pop("_asst_company_research", None)
+        # Chat input
+        if _prompt := st.chat_input("Ask about your job search…"):
+            _full_prompt = _prompt
+            # Inject loaded job context + research into message
+            _job_ctx = st.session_state.get("_asst_job_context")
+            _cr_ctx  = st.session_state.get("_asst_company_research")
             if _job_ctx:
-                full_prompt = (
-                    f"{prompt}\n\n[JOB CONTEXT LOADED]\n"
+                _full_prompt = (
+                    f"{_prompt}\n\n[JOB CONTEXT LOADED]\n"
                     f"Title: {_job_ctx.get('title')} @ {_job_ctx.get('company')}\n"
                     f"Score: {_job_ctx.get('score')}/10 — {_job_ctx.get('score_reason','')}\n"
                     f"Description:\n{(_job_ctx.get('description') or '')[:3000]}"
                 )
                 if _cr_ctx and _cr_ctx.get("research_text"):
-                    full_prompt += f"\n\n{_cr_ctx['research_text']}"
-            st.session_state["_chat_history"].append({"role": "user", "content": full_prompt})
-            if _USER_ID:
-                try:
-                    save_chat_history(_USER_ID, st.session_state["_chat_history"])
-                except Exception:
-                    pass
+                    _full_prompt += f"\n\n[COMPANY RESEARCH]\n{_cr_ctx['research_text']}"
+            st.session_state["_chat_history"].append({"role": "user", "content": _full_prompt})
+            _save_history()
             st.rerun()
-
-        # Clear button
-        if st.session_state["_chat_history"]:
-            if st.button("Clear conversation", key="clear_chat", type="secondary"):
-                st.session_state["_chat_history"] = []
-                if _USER_ID:
-                    try:
-                        clear_chat_history(_USER_ID)
-                    except Exception:
-                        pass
-                st.rerun()
