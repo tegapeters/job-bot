@@ -1673,13 +1673,28 @@ elif page == "Review Queue":
     if cap_hidden:
         parts.append(f"{cap_hidden} more below limit")
 
-    summary_col, purge_col = st.columns([4, 1])
+    summary_col, closed_col, purge_col = st.columns([4, 1, 1])
     with summary_col:
         st.markdown(f'<div class="section-label">{" · ".join(parts)}</div>', unsafe_allow_html=True)
+    with closed_col:
+        if st.button("🔍 Check closed", type="secondary", use_container_width=True,
+                     help="Fetch each listing's URL and mark any that say 'no longer accepting applications'"):
+            from fetcher import check_closed_listings
+            from tracker import mark_closed
+            _to_check = [j for j in display_queue if j.get("url")]
+            if _to_check:
+                with st.spinner(f"Checking {len(_to_check)} listings…"):
+                    _closed_ids = check_closed_listings(_to_check)
+                if _closed_ids:
+                    _n = mark_closed(_closed_ids, user_id=_USER_ID)
+                    st.success(f"Marked {_n} listing(s) as closed.")
+                    st.rerun()
+                else:
+                    st.success("All visible listings are still active.")
     with purge_col:
         stale_jobs = [j for j in unfiltered_queue if (_days_in_queue(j) or 0) > 14]
         if stale_jobs:
-            if st.button(f"Dismiss {len(stale_jobs)} stale", type="secondary", help="Mark all jobs older than 14 days as Skipped"):
+            if st.button(f"Dismiss {len(stale_jobs)} stale", type="secondary", help="Mark all jobs older than 14 days as Skipped", use_container_width=True):
                 for j in stale_jobs:
                     update_status(j["id"], "skipped", user_id=_USER_ID)
                     log_event(j["id"], "status_change", "stale -> skipped", user_id=_USER_ID)
