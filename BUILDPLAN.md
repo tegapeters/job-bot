@@ -1,8 +1,8 @@
 # Job Pal — Build Plan & ML Roadmap
 
-**Last updated:** 2026-07-08  
+**Last updated:** 2026-07-31  
 **Owner:** Tega Eshareturi  
-**Status:** Phase 1 active
+**Status:** Phase 1 complete — Phase 2 unblocked (1,000 jobs in DB ✅)
 
 ---
 
@@ -10,9 +10,11 @@
 
 | Metric | Value |
 |---|---|
-| Jobs in DB | ~450 |
+| Jobs in DB | 1,000 ✅ Phase 2 trigger hit |
 | Users | 1 (Tega) |
-| Apply/skip signals | ~140 |
+| Apply/skip signals | 413 (Phase 3 trigger: 500 — 83% there) |
+| Active sources | 6: LinkedIn (80%), RemoteOK (10%), Adzuna (5%), USAJobs (4%), Remotive (2%), Jobicy (<1%) |
+| Last pipeline run | 2026-07-23 (194 new jobs in last 14 days) |
 | Scoring backend | `embed` (TF-IDF + Sonnet for uncertain band) |
 | Cover letters | Claude Sonnet (8+ score only) |
 
@@ -56,14 +58,14 @@ Cover letter — Claude Sonnet (agent.py · generate_cover_letter)
 
 ## Data Milestones & Model Upgrades
 
-### Phase 1 — TF-IDF Embedding (NOW ✅)
+### Phase 1 — TF-IDF Embedding ✅ Complete
 **Trigger:** Default  
 **What:** TF-IDF cosine similarity + feature engineering in `embedder.py`  
 **Why:** Better than keyword heuristic with zero training data. Generalizes across professions.  
 **Limitation:** TF-IDF is lexical, not semantic. "Software Engineer" and "SWE" score differently.
 
-### Phase 2 — XGBoost on Sonnet Labels (~1,000 scored jobs)
-**Trigger:** 1,000 jobs with Sonnet-confirmed scores in `job_applications`  
+### Phase 2 — XGBoost on Sonnet Labels (NOW — trigger hit ✅)
+**Trigger:** 1,000 jobs with Sonnet-confirmed scores in `job_applications` — **reached 2026-07-31**  
 **What:** Train `XGBClassifier` on (job_features → sonnet_score) with Sonnet as ground truth  
 **Features to use:**
 - `_tfidf_sim` (already logged per job)
@@ -75,7 +77,7 @@ Cover letter — Claude Sonnet (agent.py · generate_cover_letter)
 **File to create:** `ml/train_xgboost.py`, `ml/scorer_v2.pkl`
 
 ### Phase 3 — Personalized Ranking Model (~500 apply/skip signals)
-**Trigger:** 500+ apply/skip events in `application_events` per user  
+**Trigger:** 500+ apply/skip events in `application_events` per user — **413 logged (83% there)**  
 **What:** Logistic regression or lightweight gradient boost on (job_features → user_applied)  
 **What it buys:** Personalization layer that learns *your* preferences, not just job fit.  
 The `personalization_bonus` in `tracker.py` already does this with simple rules — this replaces it with a trained model.  
@@ -98,18 +100,18 @@ The `personalization_bonus` in `tracker.py` already does this with simple rules 
 
 | Area | Grade | Gap to A |
 |---|---|---|
-| Core AI scoring | A- | Embed mode + Sonnet is strong. XGBoost will close the gap. |
+| Core AI scoring | A- | Embed mode + Sonnet is strong. XGBoost now unblocked (1k jobs) — will close to A. |
 | UX | B+ | Mobile UX and non-tech user flow need work. |
 | Stability | B+ | 3 low-severity bugs remaining. No data loss events. |
 | Data quality | B+ | Descriptions enriched, salary persisting, real post dates. |
 | Events | B | Meetup thin outside major cities. |
-| Scraper coverage | B | 5 sources. LinkedIn is 80% of volume — single point of failure. |
+| Scraper coverage | B+ | 6 sources: LinkedIn, RemoteOK, Adzuna, USAJobs, Remotive, Jobicy. LinkedIn 80% — still a concentration risk. |
 | Multi-user isolation | B | RLS live. Needs real multi-user load testing. |
-| Personalization | B- | Working but thin signal data. Improves with use. |
+| Personalization | B- | 413 apply/skip signals logged. Phase 3 model trigger is 500 — close. |
 | Non-tech user support | C+ | Architecture supports any profession — setup UX not tested. |
 | SaaS readiness | C | Auth live. No Stripe, no rate limiting, no usage caps. |
 
-**Overall: B (79/100)**
+**Overall: B (80/100)**
 
 ---
 
@@ -122,6 +124,8 @@ The `personalization_bonus` in `tracker.py` already does this with simple rules 
 - [ ] Automated daily scraping — cron job for all active users at 7am, with digest email
 
 ### Phase S2 — Scraper Resilience (1–2 weeks)
+- [x] Add Adzuna scraper — live (50 jobs indexed)
+- [x] Add USAJobs scraper — live (36 jobs indexed)
 - [ ] Add Indeed scraper (largest volume, HTML scrape)
 - [ ] Add Greenhouse/Lever (ATS boards, higher quality senior roles)
 - [ ] LinkedIn fallback (Bing Jobs or SerpAPI if HTML structure breaks)
