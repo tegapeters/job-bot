@@ -715,10 +715,21 @@ def update_event_status(event_id: str, status: str, user_id: str | None = None):
 
 def get_all_applications(user_id: str | None = None) -> list[dict]:
     sb = get_client()
-    q = sb.table("job_applications").select("*").order("score", desc=True)
-    if user_id:
-        q = q.eq("user_id", user_id)
-    return q.execute().data or []
+    PAGE = 1000
+    all_rows: list[dict] = []
+    start = 0
+    while True:
+        q = (sb.table("job_applications").select("*")
+             .order("score", desc=True)
+             .range(start, start + PAGE - 1))
+        if user_id:
+            q = q.eq("user_id", user_id)
+        data = q.execute().data or []
+        all_rows.extend(data)
+        if len(data) < PAGE:
+            break
+        start += PAGE
+    return all_rows
 
 
 def get_source_freshness(user_id: str | None = None) -> list[dict]:
@@ -729,10 +740,19 @@ def get_source_freshness(user_id: str | None = None) -> list[dict]:
     """
     from datetime import datetime, timezone
     sb = get_client()
-    q = sb.table("job_applications").select("source, created_at")
-    if user_id:
-        q = q.eq("user_id", user_id)
-    rows = q.execute().data or []
+    PAGE = 1000
+    rows: list[dict] = []
+    start = 0
+    while True:
+        q = (sb.table("job_applications").select("source, created_at")
+             .range(start, start + PAGE - 1))
+        if user_id:
+            q = q.eq("user_id", user_id)
+        data = q.execute().data or []
+        rows.extend(data)
+        if len(data) < PAGE:
+            break
+        start += PAGE
 
     by_source: dict[str, list[str]] = {}
     for row in rows:

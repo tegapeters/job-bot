@@ -1,8 +1,8 @@
 # Job Pal — Build Plan & ML Roadmap
 
-**Last updated:** 2026-07-31  
+**Last updated:** 2026-08-01  
 **Owner:** Tega Eshareturi  
-**Status:** Phase 1 complete — Phase 2 unblocked (1,000 jobs in DB ✅)
+**Status:** Phase 2 unblocked (1,759 jobs ✅) — Phase 3 also unblocked (517 signals ✅)
 
 ---
 
@@ -10,12 +10,14 @@
 
 | Metric | Value |
 |---|---|
-| Jobs in DB | 1,000 ✅ Phase 2 trigger hit |
+| Jobs in DB | 1,759 ✅ Phase 2 trigger hit |
 | Users | 1 (Tega) |
-| Apply/skip signals | 413 (Phase 3 trigger: 500 — 83% there) |
+| Apply/skip signals | 517 ✅ Phase 3 trigger hit (500+) |
+| Applied | 104 tracked applications |
+| Interviews | 1 active |
 | Active sources | 6: LinkedIn (80%), RemoteOK (10%), Adzuna (5%), USAJobs (4%), Remotive (2%), Jobicy (<1%) |
-| Last pipeline run | 2026-07-23 (194 new jobs in last 14 days) |
-| Scoring backend | `embed` (TF-IDF + Sonnet for uncertain band) |
+| Last pipeline run | 2026-08-01 |
+| Scoring backend | `hybrid` (heuristic pre-filter + Claude Sonnet for 5+ band) |
 | Cover letters | Claude Sonnet (8+ score only) |
 
 ---
@@ -77,7 +79,7 @@ Cover letter — Claude Sonnet (agent.py · generate_cover_letter)
 **File to create:** `ml/train_xgboost.py`, `ml/scorer_v2.pkl`
 
 ### Phase 3 — Personalized Ranking Model (~500 apply/skip signals)
-**Trigger:** 500+ apply/skip events in `application_events` per user — **413 logged (83% there)**  
+**Trigger:** 500+ apply/skip events in `application_events` per user — **517 logged ✅ trigger hit**  
 **What:** Logistic regression or lightweight gradient boost on (job_features → user_applied)  
 **What it buys:** Personalization layer that learns *your* preferences, not just job fit.  
 The `personalization_bonus` in `tracker.py` already does this with simple rules — this replaces it with a trained model.  
@@ -107,7 +109,7 @@ The `personalization_bonus` in `tracker.py` already does this with simple rules 
 | Events | B | Meetup thin outside major cities. |
 | Scraper coverage | B+ | 6 sources: LinkedIn, RemoteOK, Adzuna, USAJobs, Remotive, Jobicy. LinkedIn 80% — still a concentration risk. |
 | Multi-user isolation | B | RLS live. Needs real multi-user load testing. |
-| Personalization | B- | 413 apply/skip signals logged. Phase 3 model trigger is 500 — close. |
+| Personalization | B | 517 apply/skip signals logged. Phase 3 model trigger hit — XGBoost + personalization model both unblocked. |
 | Non-tech user support | C+ | Architecture supports any profession — setup UX not tested. |
 | SaaS readiness | C | Auth live. No Stripe, no rate limiting, no usage caps. |
 
