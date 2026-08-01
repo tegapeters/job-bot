@@ -150,10 +150,21 @@ def _is_closed(url: str, source: str) -> bool:
         if src_key in src and any(s in url.lower() for s in signals):
             return True
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
+        # LinkedIn: use the guest API endpoint — the regular job view URL
+        # returns JS-rendered HTML where closed signals aren't visible to requests.
+        fetch_url = url
+        if "linkedin.com" in url:
+            job_id = _extract_job_id(url)
+            if job_id:
+                fetch_url = GUEST_API.format(job_id=job_id)
+
+        resp = requests.get(fetch_url, headers=HEADERS, timeout=10, allow_redirects=True)
         text = resp.text.lower()
-        # Redirect to homepage / 404 / generic error = closed
         if resp.status_code in (404, 410):
+            return True
+        # LinkedIn-specific closed markers
+        if "linkedin.com" in url and ('class="closed-job' in resp.text or
+                                       "closed-job__flavor" in resp.text):
             return True
         return any(phrase in text for phrase in _CLOSED_PHRASES)
     except Exception:
