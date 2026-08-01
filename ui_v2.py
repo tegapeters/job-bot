@@ -1673,7 +1673,7 @@ elif page == "Review Queue":
     if cap_hidden:
         parts.append(f"{cap_hidden} more below limit")
 
-    summary_col, closed_col, purge_col = st.columns([4, 1, 1])
+    summary_col, closed_col, skip_col, purge_col = st.columns([4, 1, 1, 1])
     with summary_col:
         st.markdown(f'<div class="section-label">{" · ".join(parts)}</div>', unsafe_allow_html=True)
     with closed_col:
@@ -1691,6 +1691,14 @@ elif page == "Review Queue":
                     st.rerun()
                 else:
                     st.success("All visible listings are still active.")
+    with skip_col:
+        if st.button(f"Skip all {len(display_queue)}", type="secondary", use_container_width=True,
+                     help="Mark every job currently visible as Skipped"):
+            for j in display_queue:
+                update_status(j["id"], "skipped", user_id=_USER_ID)
+                log_event(j["id"], "status_change", "bulk skip", user_id=_USER_ID)
+            st.success(f"Skipped {len(display_queue)} jobs.")
+            st.rerun()
     with purge_col:
         stale_jobs = [j for j in unfiltered_queue if (_days_in_queue(j) or 0) > 14]
         if stale_jobs:
