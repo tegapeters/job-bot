@@ -638,6 +638,14 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                 unsafe_allow_html=True,
             )
 
+        # ⚠️ Type-2 closed heuristic: LinkedIn jobs >14d old with 200+ applicants
+        # (guest API cannot detect JS-only closures; this is the best available signal)
+        if (days is not None and days > 14
+                and "linkedin.com" in (job.get("url") or "").lower()
+                and any(p in (job.get("description") or "") for p in
+                        ["Over 200 applicants", "200+ applicants", "over 200 applicants"])):
+            st.warning("⚠️ Likely filled — LinkedIn shows 200+ applicants and this posting is 2+ weeks old. Verify before applying.")
+
         col1, col2 = st.columns([2, 1])
 
         with col1:
@@ -1574,6 +1582,67 @@ elif page == "Review Queue":
             help="Lower to see borderline matches. Raise to see only strong fits.",
             label_visibility="collapsed",
         )
+
+    # ── Manual job add ────────────────────────────────────────────────
+    with st.expander("➕ Add a job manually", expanded=False):
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:12px">Found a job outside the scraper? Paste the URL to auto-fill details, or enter them manually.</div>', unsafe_allow_html=True)
+        _mj_url = st.text_input("Job URL", key="mj_url", placeholder="https://www.linkedin.com/jobs/view/...")
+        _mj_col1, _mj_col2 = st.columns([1, 1])
+        with _mj_col1:
+            _mj_title    = st.text_input("Job title",   key="mj_title",    placeholder="e.g. Data Scientist")
+            _mj_company  = st.text_input("Company",     key="mj_company",  placeholder="e.g. Acme Corp")
+            _mj_location = st.text_input("Location",    key="mj_location", placeholder="e.g. Remote / Houston, TX")
+        with _mj_col2:
+            _mj_score    = st.number_input("Score (1–10)", key="mj_score", min_value=1, max_value=10, value=8,
+                                           help="Manually added jobs default to 8 — you picked it, so it matters.")
+            _mj_reason   = st.text_input("Why it's interesting (optional)", key="mj_reason",
+                                         placeholder="e.g. Strong mission fit, heard from recruiter")
+            _mj_wtype    = st.selectbox("Work type", ["Remote", "Hybrid", "Onsite"], key="mj_wtype", index=0)
+
+        _mj_fetch_clicked = st.button("🔍 Fetch details from URL", key="mj_fetch", type="secondary")
+        if _mj_fetch_clicked and _mj_url.strip():
+            with st.spinner("Fetching job details…"):
+                from fetcher import fetch_linkedin_job
+                _fetched = fetch_linkedin_job(_mj_url.strip())
+            if _fetched.get("company"):
+                st.session_state["mj_company"] = _fetched["company"]
+            if _fetched.get("description"):
+                st.session_state["_mj_fetched_desc"] = _fetched["description"]
+                st.success(f"Fetched description ({len(_fetched['description'])} chars).")
+            else:
+                st.info("Couldn't auto-fill description — fill in manually above and save.")
+
+        if st.button("💾 Add to Review Queue", key="mj_save", type="primary"):
+            import hashlib
+            _url_clean = _mj_url.strip()
+            if not _mj_title.strip() or not _mj_company.strip():
+                st.error("Title and company are required.")
+            else:
+                _mid = hashlib.md5((_url_clean or f"manual-{_mj_title}-{_mj_company}").encode()).hexdigest()[:16]
+                if _USER_ID:
+                    _mid = hashlib.md5(f"{_USER_ID}-{_url_clean or _mj_title}-{_mj_company}".encode()).hexdigest()[:16]
+                _manual_job = {
+                    "id":           _mid,
+                    "source":       "manual",
+                    "title":        _mj_title.strip(),
+                    "company":      _mj_company.strip(),
+                    "location":     _mj_location.strip() or "Unknown",
+                    "url":          _url_clean or "",
+                    "description":  st.session_state.pop("_mj_fetched_desc", ""),
+                    "status":       "new",
+                    "score":        int(_mj_score),
+                    "score_reason": _mj_reason.strip() or "Manually added",
+                    "work_type":    _mj_wtype,
+                    "scored_by":    "manual",
+                    "seniority":    "Unknown",
+                    "salary_match": "Unknown",
+                }
+                if _USER_ID:
+                    _manual_job["user_id"] = _USER_ID
+                from tracker import upsert_jobs
+                upsert_jobs([_manual_job])
+                st.success(f"Added **{_mj_title.strip()} @ {_mj_company.strip()}** to your queue.")
+                st.rerun()
 
     queue = safe_get_queue(min_score=queue_min_score)
     if not queue:

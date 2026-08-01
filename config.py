@@ -4,6 +4,29 @@ Personal values (resume, applicant info) live in RESUME_TEXT and APPLICANT_INFO
 and are only used for CLI scrape runs (main.py). All UI runs use per-user sessions.
 """
 
+# ── Secrets helper (needed before RESUME_TEXT and APPLICANT_INFO) ──
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
+def _secret(*names: str) -> str | None:
+    """Read a secret from env vars (local) or st.secrets (Streamlit Cloud)."""
+    for name in names:
+        val = os.getenv(name)
+        if val:
+            return val
+    try:
+        import streamlit as st
+        for name in names:
+            val = st.secrets.get(name)
+            if val:
+                return val
+    except Exception:
+        pass
+    return None
+
+
 # ── Job Preferences ────────────────────────────────────────────────
 TARGET_ROLES = [
     "Data Scientist",
@@ -50,9 +73,12 @@ EXCLUDE_KEYWORDS = [
 ]
 
 # ── Resume / Background ─────────────────────────────────────────────
-RESUME_TEXT = """
+_cli_email = _secret("CLI_EMAIL", "APPLICANT_EMAIL") or ""
+_cli_phone = _secret("CLI_PHONE", "APPLICANT_PHONE") or ""
+
+RESUME_TEXT = f"""
 Tega Eshareturi — Houston, TX
-Tegapeters11@gmail.com | 832.660.1325 | github.com/tegapeters/ai-portfolio
+{_cli_email} | {_cli_phone} | github.com/tegapeters/ai-portfolio
 Salary Target: $140,000+ | Open to: Remote, Hybrid, Onsite (Houston/Austin/major US cities)
 
 PROFESSIONAL SUMMARY
@@ -123,38 +149,16 @@ RESUME_PATH = "/Users/techturi/Documents/Resume/TEGA_ESHARETURI_RESUME_2026.pdf"
 APPLICANT_INFO = {
     "first_name":       "Tega",
     "last_name":        "Eshareturi",
-    "email":            "tegapeters11@gmail.com",          # ← your email
-    "phone":            "832-660-1325",              # ← e.g. 713-555-1234
-    "linkedin":         "https://www.linkedin.com/in/tega-p-eshareturi-014002142/",  # ← your LinkedIn URL
+    "email":            _secret("CLI_EMAIL", "APPLICANT_EMAIL") or "",
+    "phone":            _secret("CLI_PHONE", "APPLICANT_PHONE") or "",
+    "linkedin":         _secret("CLI_LINKEDIN") or "https://www.linkedin.com/in/tega-p-eshareturi-014002142/",
     "current_company":  "Oracle NetSuite",
     "location":         "Houston, TX",
-    "work_auth":        "Yes",                        # authorized to work in US
+    "work_auth":        "Yes",
     "requires_sponsor": "No",
 }
 
 # ── Supabase ────────────────────────────────────────────────────────
-import os
-from dotenv import load_dotenv
-load_dotenv()
-
-
-def _secret(*names: str) -> str | None:
-    """Read a secret from env vars (local) or st.secrets (Streamlit Cloud)."""
-    for name in names:
-        val = os.getenv(name)
-        if val:
-            return val
-    try:
-        import streamlit as st
-        for name in names:
-            val = st.secrets.get(name)
-            if val:
-                return val
-    except Exception:
-        pass
-    return None
-
-
 SUPABASE_URL = _secret("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_KEY = _secret("SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_KEY")
 
