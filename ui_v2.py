@@ -148,6 +148,7 @@ st.markdown("""
   .tag-rejected           { background: #1f0a0a; color: #ff3a3a; border: 1px solid #350f0f; }
   .tag-skipped            { background: #1a1a1a; color: #666; border: 1px solid #333; }
   .tag-application_closed { background: #1a1208; color: #ff9a3a; border: 1px solid #352010; }
+  .tag-no_response        { background: #181818; color: #888; border: 1px solid #2a2a2a; }
 
   /* ── Cover letter block ── */
   .cover-letter {
@@ -571,8 +572,8 @@ def score_badge(score):
     return f'<span class="{cls}">{score}/10</span>'
 
 def status_tag(status):
-    cls = f"tag tag-{status}" if status in ("new","applied","interview","rejected","skipped","application_closed") else "tag"
-    label = "closed" if status == "application_closed" else status
+    cls = f"tag tag-{status}" if status in ("new","applied","interview","rejected","skipped","application_closed","no_response") else "tag"
+    label = {"application_closed": "closed", "no_response": "no response"}.get(status, status)
     return f'<span class="{cls}">{label}</span>'
 
 def safe_get_apps():
@@ -1807,6 +1808,23 @@ elif page == "Applied":
     metric(_ac2, "Heard Back",    _total_heard, f"{_resp_rate}% response rate")
     metric(_ac3, "Interviews",    len(interviews), accent=bool(interviews))
     metric(_ac4, "Rejected",      len(rejected))
+
+    # ── Dismiss stale applied jobs ────────────────────────────────────
+    _stale_applied = [a for a in applied if (_days_in_queue(a) or 0) > 30]
+    if _stale_applied:
+        _ds_col, _ = st.columns([2, 5])
+        with _ds_col:
+            if st.button(
+                f"Dismiss {len(_stale_applied)} no-response (30+ days)",
+                type="secondary",
+                use_container_width=True,
+                help="Moves applications with no reply after 30 days to 'no response' — keeps history, removes from active view",
+            ):
+                for _a in _stale_applied:
+                    update_status(_a["id"], "no_response", user_id=_USER_ID)
+                    log_event(_a["id"], "status_change", "no reply after 30 days", user_id=_USER_ID)
+                st.success(f"Moved {len(_stale_applied)} ghost applications to 'no response'.")
+                st.rerun()
 
     if not applied:
         st.markdown("""
