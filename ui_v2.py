@@ -551,9 +551,10 @@ with st.sidebar:
     }
     _nav_labels   = list(_nav_map.keys())
     _nav_internal = list(_nav_map.values())
-    _forced_page  = st.session_state.pop("_nav_page", None)
-    _nav_default  = _nav_internal.index(_forced_page) if _forced_page in _nav_internal else 0
-    _sel = st.radio("Navigate", _nav_labels, index=_nav_default, label_visibility="collapsed")
+    _forced_page = st.session_state.pop("_nav_page", None)
+    if _forced_page and _forced_page in _nav_labels:
+        st.session_state["_nav_radio"] = _forced_page
+    _sel = st.radio("Navigate", _nav_labels, key="_nav_radio", label_visibility="collapsed")
     page = _nav_map[_sel]
 
     st.markdown("<br>", unsafe_allow_html=True)
