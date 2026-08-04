@@ -418,6 +418,146 @@ st.markdown("""
   /* ── Hide Streamlit health status badge ── */
   [data-testid="stStatusWidget"] { display: none !important; }
 
+  /* ── Swipe card (Review Queue card mode) ── */
+  .swipe-card {
+    background: #131315;
+    border: 1px solid #1f1f22;
+    border-radius: 12px;
+    padding: 28px 28px 24px;
+    margin: 0 auto 24px;
+    max-width: 600px;
+    position: relative;
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .sc-progress-bar {
+    height: 3px;
+    background: #1f1f22;
+    border-radius: 2px;
+    margin-bottom: 20px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .sc-progress-fill {
+    height: 100%;
+    background: #D4FF3A;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+  .sc-counter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #4A4A45;
+    letter-spacing: 0.15em;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .sc-score-badge {
+    font-family: 'Fraunces', serif;
+    font-size: 52px;
+    font-weight: 300;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .sc-score-badge.high { color: #D4FF3A; }
+  .sc-score-badge.mid  { color: #f5c518; }
+  .sc-score-badge.low  { color: #ff6b6b; }
+  .sc-score-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #4A4A45;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .sc-title {
+    font-family: 'Fraunces', serif;
+    font-size: 26px;
+    font-weight: 300;
+    color: #F5F4EE;
+    margin: 0 0 6px 0;
+    line-height: 1.2;
+  }
+  .sc-company {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: #8B8B85;
+    margin-bottom: 16px;
+  }
+  .sc-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .sc-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 4px 10px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .sc-tag.remote { background: #1a1f0a; color: #D4FF3A; border: 1px solid #2a3510; }
+  .sc-tag.hybrid { background: #0a1a1f; color: #3ad4ff; border: 1px solid #102a35; }
+  .sc-tag.onsite { background: #1a1a1a; color: #8B8B85; border: 1px solid #2a2a2a; }
+  .sc-tag.salary { background: #131315; color: #8B8B85; border: 1px solid #2a2a2a; }
+  .sc-tag.days   { background: #131315; color: #8B8B85; border: 1px solid #2a2a2a; }
+  .sc-tag.days.warn { color: #f5c518; }
+  .sc-tag.days.stale { color: #ff6b6b; }
+  .sc-reason {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #c8c8c0;
+    line-height: 1.7;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: #0d0d0f;
+    border-radius: 6px;
+    border-left: 2px solid #D4FF3A;
+  }
+  .sc-hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #8B8B85;
+    margin-bottom: 14px;
+  }
+  .sc-link {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #D4FF3A;
+    text-decoration: none;
+    letter-spacing: 0.08em;
+  }
+  .sc-link:hover { text-decoration: underline; }
+  .sc-gesture-hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #2a2a2e;
+    text-align: center;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 14px;
+  }
+  .sc-swipe-indicator {
+    position: absolute;
+    top: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.05s;
+  }
+  .sc-swipe-indicator.skip-ind  { left: 20px;  color: #ff6b6b; border: 2px solid #ff6b6b; }
+  .sc-swipe-indicator.apply-ind { right: 20px; color: #D4FF3A; border: 2px solid #D4FF3A; }
+  @media (max-width: 768px) {
+    .swipe-card { padding: 20px 18px 18px; border-radius: 10px; }
+    .sc-title { font-size: 22px; }
+    .sc-score-badge { font-size: 42px; }
+  }
+
   /* ── Funnel row (Dashboard) ── */
   .funnel-row {
     display: flex;
@@ -905,6 +1045,182 @@ Instructions:
                     if st.button("Start over", key=f"q_clear_{job['id']}", type="secondary"):
                         st.session_state[q_chat_key] = []
                         st.rerun()
+
+def _render_swipe_card_mode(display_queue):
+    """Single-card swipe view for the Review Queue. Supports touch swipe + arrow keys."""
+    if "rq_passed_ids" not in st.session_state:
+        st.session_state["rq_passed_ids"] = set()
+
+    passed = st.session_state["rq_passed_ids"]
+    effective = [j for j in display_queue if j["id"] not in passed]
+
+    total = len(display_queue)
+    reviewed = total - len(effective)
+    pct = reviewed / total * 100 if total else 100
+
+    st.markdown(
+        f'<div class="sc-progress-bar"><div class="sc-progress-fill" style="width:{pct:.0f}%"></div></div>'
+        f'<div class="sc-counter">{reviewed} reviewed · {len(effective)} remaining</div>',
+        unsafe_allow_html=True,
+    )
+
+    if not effective:
+        st.markdown("""
+        <div class="swipe-card" style="text-align:center;padding:40px 28px">
+          <div style="font-size:36px;margin-bottom:12px">✓</div>
+          <h4 style="font-family:'Fraunces',serif;font-size:22px;font-weight:300;color:#F5F4EE;margin-bottom:8px">All reviewed</h4>
+          <p style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B8B85;margin:0">
+            You've gone through everything in this batch.
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Reset passes", type="secondary", key="rq_reset_passes"):
+            st.session_state["rq_passed_ids"] = set()
+            st.rerun()
+        return
+
+    job = effective[0]
+    score = job.get("score") or 0
+    score_cls = "high" if score >= 8 else "mid" if score >= 6 else "low"
+
+    work_type = (job.get("work_type") or "").strip()
+    wt_cls = {"Remote": "remote", "Hybrid": "hybrid", "Onsite": "onsite"}.get(work_type, "onsite")
+    wt_tag = f'<span class="sc-tag {wt_cls}">{work_type}</span>' if work_type else ""
+
+    days = _days_in_queue(job)
+    if days is not None:
+        d_cls = "days stale" if days > 14 else "days warn" if days > 7 else "days"
+        days_tag = f'<span class="sc-tag {d_cls}">{days}d in queue</span>'
+    else:
+        days_tag = ""
+
+    from agent import _extract_salary_from_text
+    salary = job.get("salary_range") or _extract_salary_from_text(job.get("description", ""))
+    salary_tag = f'<span class="sc-tag salary">{salary}</span>' if salary else ""
+
+    hint_html = ""
+    if job.get("_personal_hint"):
+        hint = (job["_personal_hint"]
+            .replace("company you engaged positively before", "✅ Company you liked before")
+            .replace("company you skipped/rejected before", "⚠️ Company you passed on before")
+            .replace("source with past positive outcomes", "📌 Strong source for you")
+            .replace("title overlap with roles you liked", "👍 Matches roles you've gone for"))
+        hint = re.sub(
+            r"title contains patterns you skip \(([^)]+)\)",
+            lambda m: f"⏭️ You tend to skip {m.group(1)} roles",
+            hint,
+        )
+        hint_html = f'<div class="sc-hint">{hint}</div>'
+
+    url = job.get("url", "")
+    link_html = f'<a class="sc-link" href="{url}" target="_blank" rel="noopener">View posting ↗</a>' if url else ""
+
+    title_safe = job.get("title", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    company = job.get("company", "?")
+    location = job.get("location", "")
+    reason = job.get("score_reason", "")
+
+    st.markdown(f"""
+    <div class="swipe-card" id="jp-swipe-card">
+      <span class="sc-swipe-indicator skip-ind"  id="jp-skip-ind">← SKIP</span>
+      <span class="sc-swipe-indicator apply-ind" id="jp-apply-ind">APPLY →</span>
+      <div class="sc-score-badge {score_cls}">{score}<span style="font-size:20px;color:#4A4A45">/10</span></div>
+      <div class="sc-score-label">AI match score</div>
+      <h2 class="sc-title">{title_safe}</h2>
+      <div class="sc-company">{company} · {location}</div>
+      <div class="sc-tags">{wt_tag}{salary_tag}{days_tag}</div>
+      <div class="sc-reason">{reason}</div>
+      {hint_html}
+      {link_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Swipe + keyboard JS — idempotent (window flag prevents double-attach across rerenders)
+    st.markdown("""
+    <script>
+    (function() {
+      if (window._jpSwipeInit) return;
+      window._jpSwipeInit = true;
+
+      function clickBtn(text) {
+        var btns = document.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {
+          if (btns[i].innerText.trim() === text) { btns[i].click(); return; }
+        }
+      }
+
+      // Arrow keys (skip focus on inputs)
+      document.addEventListener('keydown', function(e) {
+        var tag = document.activeElement ? document.activeElement.tagName : '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        if (e.key === 'ArrowLeft')  { e.preventDefault(); clickBtn('← Skip'); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); clickBtn('Apply →'); }
+        if (e.key === 'ArrowDown')  { e.preventDefault(); clickBtn('Pass'); }
+      });
+
+      // Touch swipe with live card drag + indicators
+      var tx = 0, ty = 0, dragging = false;
+      document.addEventListener('touchstart', function(e) {
+        tx = e.touches[0].clientX;
+        ty = e.touches[0].clientY;
+        dragging = false;
+      }, { passive: true });
+
+      document.addEventListener('touchmove', function(e) {
+        var dx = e.touches[0].clientX - tx;
+        var dy = e.touches[0].clientY - ty;
+        if (!dragging && Math.abs(dx) < Math.abs(dy)) return; // vertical scroll
+        dragging = true;
+        var card = document.getElementById('jp-swipe-card');
+        if (!card) return;
+        card.style.transform = 'translateX(' + (dx * 0.35) + 'px) rotate(' + (dx * 0.018) + 'deg)';
+        var si = document.getElementById('jp-skip-ind');
+        var ai = document.getElementById('jp-apply-ind');
+        if (si)  si.style.opacity  = dx < -20 ? Math.min(1, (-dx - 20) / 70).toFixed(2) : 0;
+        if (ai) ai.style.opacity  = dx > 20  ? Math.min(1, (dx - 20) / 70).toFixed(2)  : 0;
+      }, { passive: true });
+
+      document.addEventListener('touchend', function(e) {
+        var card = document.getElementById('jp-swipe-card');
+        if (card) card.style.transform = '';
+        var si = document.getElementById('jp-skip-ind');
+        var ai = document.getElementById('jp-apply-ind');
+        if (si) si.style.opacity  = 0;
+        if (ai) ai.style.opacity = 0;
+        if (!dragging) return;
+        var dx = e.changedTouches[0].clientX - tx;
+        if (Math.abs(dx) > 75) {
+          if (dx < 0) clickBtn('← Skip');
+          else        clickBtn('Apply →');
+        }
+      }, { passive: true });
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+
+    skip_col, pass_col, apply_col = st.columns([5, 3, 5])
+    with skip_col:
+        if st.button("← Skip", use_container_width=True, key=f"cs_{job['id']}"):
+            update_status(job["id"], "skipped", user_id=_USER_ID)
+            log_event(job["id"], "status_change", "card skip", user_id=_USER_ID)
+            passed.discard(job["id"])
+            st.rerun()
+    with pass_col:
+        if st.button("Pass", use_container_width=True, key=f"cp_{job['id']}"):
+            passed.add(job["id"])
+            st.rerun()
+    with apply_col:
+        if st.button("Apply →", use_container_width=True, type="primary", key=f"ca_{job['id']}"):
+            update_status(job["id"], "applied", user_id=_USER_ID)
+            log_event(job["id"], "applied", "card swipe", user_id=_USER_ID)
+            passed.discard(job["id"])
+            st.rerun()
+
+    st.markdown(
+        '<div class="sc-gesture-hint">← skip · pass · apply →  ·  arrow keys on desktop</div>',
+        unsafe_allow_html=True,
+    )
+
 
 def _categorize(title: str) -> str:
     t = (title or "").lower()
@@ -1738,6 +2054,19 @@ elif page == "Review Queue":
     display_queue = queue if display_limit == "All" else queue[:int(display_limit)]
     cap_hidden = len(queue) - len(display_queue)
 
+    # ── View mode ──────────────────────────────────────────────────
+    _vm_l, _vm_r = st.columns([4, 1])
+    with _vm_r:
+        card_mode = st.toggle(
+            "Card mode",
+            key="rq_card_mode",
+            help="Review one job at a time — swipe left/right on mobile, arrow keys on desktop",
+        )
+    # Reset passes when switching into card mode so the deck feels fresh
+    if card_mode and not st.session_state.get("_rq_card_mode_prev"):
+        st.session_state["rq_passed_ids"] = set()
+    st.session_state["_rq_card_mode_prev"] = card_mode
+
     parts = [f"{len(display_queue)} shown"]
     if stale_hidden:
         parts.append(f"{stale_hidden} stale hidden")
@@ -1780,8 +2109,11 @@ elif page == "Review Queue":
                 st.success(f"Dismissed {len(stale_jobs)} stale jobs.")
                 st.rerun()
 
-    for job in display_queue:
-        job_card(job, "rq", ["applied", "skipped", "rejected"])
+    if card_mode:
+        _render_swipe_card_mode(display_queue)
+    else:
+        for job in display_queue:
+            job_card(job, "rq", ["applied", "skipped", "rejected"])
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want to talk through which jobs to apply to?</div>', unsafe_allow_html=True)
