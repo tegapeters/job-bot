@@ -724,9 +724,20 @@ def safe_get_apps():
         st.error(f"Cannot connect to database. Check Supabase secrets in Streamlit Cloud settings. Error: `{e}`")
         st.stop()
 
+@st.cache_data(ttl=90, show_spinner=False)
+def _cached_review_queue(min_score: int, user_id: str | None) -> list:
+    return get_review_queue(min_score=min_score, user_id=user_id)
+
+
+@st.cache_data(ttl=90, show_spinner=False)
+def _cached_personalization_ctx(user_id: str | None) -> dict:
+    from tracker import get_personalization_context
+    return get_personalization_context(user_id=user_id)
+
+
 def safe_get_queue(min_score=REVIEW_MIN_SCORE):
     try:
-        return get_review_queue(min_score=min_score, user_id=_USER_ID)
+        return _cached_review_queue(min_score, _USER_ID)
     except Exception as e:
         st.error(f"Cannot connect to database. Check Supabase secrets. Error: `{e}`")
         st.stop()
@@ -1050,9 +1061,12 @@ def _render_swipe_card_mode(display_queue):
     """Single-card swipe view for the Review Queue. Supports touch swipe + arrow keys."""
     if "rq_passed_ids" not in st.session_state:
         st.session_state["rq_passed_ids"] = set()
+    if "rq_actioned_ids" not in st.session_state:
+        st.session_state["rq_actioned_ids"] = set()
 
-    passed = st.session_state["rq_passed_ids"]
-    effective = [j for j in display_queue if j["id"] not in passed]
+    passed   = st.session_state["rq_passed_ids"]
+    actioned = st.session_state["rq_actioned_ids"]
+    effective = [j for j in display_queue if j["id"] not in passed and j["id"] not in actioned]
 
     total = len(display_queue)
     reviewed = total - len(effective)
@@ -1203,6 +1217,7 @@ def _render_swipe_card_mode(display_queue):
         if st.button("← Skip", use_container_width=True, key=f"cs_{job['id']}"):
             update_status(job["id"], "skipped", user_id=_USER_ID)
             log_event(job["id"], "status_change", "card skip", user_id=_USER_ID)
+            actioned.add(job["id"])
             passed.discard(job["id"])
             st.rerun()
     with pass_col:
@@ -1213,6 +1228,7 @@ def _render_swipe_card_mode(display_queue):
         if st.button("Apply →", use_container_width=True, type="primary", key=f"ca_{job['id']}"):
             update_status(job["id"], "applied", user_id=_USER_ID)
             log_event(job["id"], "applied", "card swipe", user_id=_USER_ID)
+            actioned.add(job["id"])
             passed.discard(job["id"])
             st.rerun()
 
@@ -2030,8 +2046,7 @@ elif page == "Review Queue":
 
     if personalize:
         # Show a plain-English summary of what the system has learned
-        from tracker import get_personalization_context
-        ctx = get_personalization_context(user_id=_USER_ID)
+        ctx = _cached_personalization_ctx(_USER_ID)
         if ctx.get("has_signals"):
             pills = []
             _pos_cos = sorted(ctx.get("pos_companies") or [], key=str.lower)[:4]
@@ -2055,7 +2070,7 @@ elif page == "Review Queue":
         else:
             st.caption("Apply to or skip a few jobs and Job Pal will start learning your preferences.")
 
-        rank_queue_with_personalization(queue, weights=weights, user_id=_USER_ID)
+        rank_queue_with_personalization(queue, weights=weights, ctx=ctx)
     else:
         queue.sort(key=lambda j: j.get("score") or 0, reverse=True)
 
@@ -2063,9 +2078,16 @@ elif page == "Review Queue":
     cap_hidden = len(queue) - len(display_queue)
 
     card_mode = (_rq_view == "🃏 Cards")
-    # Reset passes when switching into card mode so the deck feels fresh
-    if card_mode and not st.session_state.get("_rq_card_mode_prev"):
+    _was_card = st.session_state.get("_rq_card_mode_prev", False)
+    if card_mode and not _was_card:
+        # Entering card mode: clear passes so deck feels fresh; invalidate queue cache
         st.session_state["rq_passed_ids"] = set()
+        st.session_state["rq_actioned_ids"] = set()
+        _cached_review_queue.clear()
+        _cached_personalization_ctx.clear()
+    elif not card_mode and _was_card:
+        # Leaving card mode: clear actioned set so list shows full queue
+        st.session_state["rq_actioned_ids"] = set()
     st.session_state["_rq_card_mode_prev"] = card_mode
 
     parts = [f"{len(display_queue)} shown"]
