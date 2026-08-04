@@ -1888,7 +1888,7 @@ elif page == "Dashboard":
 # ═══════════════════════════════════════════════════════════════════
 elif page == "Review Queue":
     page_header("Review Queue", "Jobs worth <em>applying to.</em>")
-    rq_col_info, rq_col_thresh = st.columns([3, 1])
+    rq_col_info, rq_col_thresh, rq_col_view = st.columns([3, 1, 1])
     with rq_col_info:
         st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:20px">AI-scored matches waiting for your review · status updates save instantly</div>', unsafe_allow_html=True)
     with rq_col_thresh:
@@ -1898,6 +1898,14 @@ elif page == "Review Queue":
             index=2,  # default 7
             key="rq_min_score",
             help="Lower to see borderline matches. Raise to see only strong fits.",
+            label_visibility="collapsed",
+        )
+    with rq_col_view:
+        _rq_view = st.radio(
+            "View",
+            ["📋 List", "🃏 Cards"],
+            key="rq_view_radio",
+            horizontal=True,
             label_visibility="collapsed",
         )
 
@@ -2054,14 +2062,7 @@ elif page == "Review Queue":
     display_queue = queue if display_limit == "All" else queue[:int(display_limit)]
     cap_hidden = len(queue) - len(display_queue)
 
-    # ── View mode ──────────────────────────────────────────────────
-    _vm_l, _vm_r = st.columns([4, 1])
-    with _vm_r:
-        card_mode = st.toggle(
-            "Card mode",
-            key="rq_card_mode",
-            help="Review one job at a time — swipe left/right on mobile, arrow keys on desktop",
-        )
+    card_mode = (_rq_view == "🃏 Cards")
     # Reset passes when switching into card mode so the deck feels fresh
     if card_mode and not st.session_state.get("_rq_card_mode_prev"):
         st.session_state["rq_passed_ids"] = set()
