@@ -842,8 +842,8 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                         log_event(job["id"], auto_event, f"status moved to {new_status}", user_id=_USER_ID)
                     else:
                         log_event(job["id"], "status_change", f"{job.get('status', 'unknown')} -> {new_status}", user_id=_USER_ID)
-                    # Reset selectbox so Save button disappears and job leaves queue immediately
-                    st.session_state[f"{key_prefix}_sel_{job['id']}"] = "— no change —"
+                    # Pop the key so the selectbox resets to default on next render
+                    st.session_state.pop(f"{key_prefix}_sel_{job['id']}", None)
                     _cached_review_queue.clear()
                     _cached_personalization_ctx.clear()
                     st.success(f"→ {new_status}")
