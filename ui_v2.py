@@ -842,6 +842,9 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                         log_event(job["id"], auto_event, f"status moved to {new_status}", user_id=_USER_ID)
                     else:
                         log_event(job["id"], "status_change", f"{job.get('status', 'unknown')} -> {new_status}", user_id=_USER_ID)
+                    # Reset selectbox so Save button disappears and job leaves queue immediately
+                    st.session_state[f"{key_prefix}_sel_{job['id']}"] = "— no change —"
+                    _cached_review_queue.clear()
                     st.success(f"→ {new_status}")
                     st.rerun()
 
@@ -1983,6 +1986,7 @@ elif page == "Review Queue":
                     _manual_job["user_id"] = _USER_ID
                 from tracker import upsert_jobs
                 upsert_jobs([_manual_job])
+                _cached_review_queue.clear()
                 st.success(f"Added **{_mj_title.strip()} @ {_mj_company.strip()}** to your queue.")
                 st.rerun()
 
@@ -2086,8 +2090,9 @@ elif page == "Review Queue":
         _cached_review_queue.clear()
         _cached_personalization_ctx.clear()
     elif not card_mode and _was_card:
-        # Leaving card mode: clear actioned set so list shows full queue
+        # Leaving card mode: clear actioned set and bust cache so list reflects card actions
         st.session_state["rq_actioned_ids"] = set()
+        _cached_review_queue.clear()
     st.session_state["_rq_card_mode_prev"] = card_mode
 
     parts = [f"{len(display_queue)} shown"]
@@ -2110,6 +2115,7 @@ elif page == "Review Queue":
                     _closed_ids = check_closed_listings(_to_check)
                 if _closed_ids:
                     _n = mark_closed(_closed_ids, user_id=_USER_ID)
+                    _cached_review_queue.clear()
                     st.success(f"Marked {_n} listing(s) as closed.")
                     st.rerun()
                 else:
@@ -2120,6 +2126,7 @@ elif page == "Review Queue":
             for j in display_queue:
                 update_status(j["id"], "skipped", user_id=_USER_ID)
                 log_event(j["id"], "status_change", "bulk skip", user_id=_USER_ID)
+            _cached_review_queue.clear()
             st.success(f"Skipped {len(display_queue)} jobs.")
             st.rerun()
     with purge_col:
@@ -2129,6 +2136,7 @@ elif page == "Review Queue":
                 for j in stale_jobs:
                     update_status(j["id"], "skipped", user_id=_USER_ID)
                     log_event(j["id"], "status_change", "stale -> skipped", user_id=_USER_ID)
+                _cached_review_queue.clear()
                 st.success(f"Dismissed {len(stale_jobs)} stale jobs.")
                 st.rerun()
 
