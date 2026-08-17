@@ -865,6 +865,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             )
             if st.button("Log Signal", key=f"{key_prefix}_signal_save_{job['id']}"):
                 log_event(job["id"], signal, note.strip(), user_id=_USER_ID)
+                st.session_state.pop(f"{key_prefix}_signal_{job['id']}", None)
                 st.success(f"Logged: {signal}")
                 st.rerun()
 
@@ -2049,6 +2050,10 @@ elif page == "Review Queue":
         "neg_token_cap": -1.5,
     }
 
+    if not queue:
+        st.info("No jobs match the current filters — try lowering the score threshold or adjusting category filters.")
+        st.stop()
+
     if personalize:
         # Show a plain-English summary of what the system has learned
         ctx = _cached_personalization_ctx(_USER_ID)
@@ -2085,16 +2090,22 @@ elif page == "Review Queue":
     card_mode = (_rq_view == "🃏 Cards")
     _was_card = st.session_state.get("_rq_card_mode_prev", False)
     if card_mode and not _was_card:
-        # Entering card mode: clear passes so deck feels fresh; invalidate queue cache
+        # Entering card mode: clear passes, bust cache, then rerun so the deck
+        # renders from fresh data (not the stale queue already fetched above)
         st.session_state["rq_passed_ids"] = set()
         st.session_state["rq_actioned_ids"] = set()
         _cached_review_queue.clear()
         _cached_personalization_ctx.clear()
+        st.session_state["_rq_card_mode_prev"] = card_mode
+        st.rerun()
     elif not card_mode and _was_card:
-        # Leaving card mode: clear actioned set and bust cache so list reflects card actions
+        # Leaving card mode: bust cache so card-actioned jobs don't reappear in list
         st.session_state["rq_actioned_ids"] = set()
         _cached_review_queue.clear()
-    st.session_state["_rq_card_mode_prev"] = card_mode
+        st.session_state["_rq_card_mode_prev"] = card_mode
+        st.rerun()
+    else:
+        st.session_state["_rq_card_mode_prev"] = card_mode
 
     parts = [f"{len(display_queue)} shown"]
     if stale_hidden:
