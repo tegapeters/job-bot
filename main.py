@@ -14,7 +14,7 @@ Usage:
 import sys
 from scrapers import scrape_all
 from agent import process_jobs
-from tracker import upsert_jobs, get_all_applications, get_seen_ids, get_stale_listings, mark_closed
+from tracker import upsert_jobs, get_all_applications, get_seen_ids, get_actioned_fingerprints, get_stale_listings, mark_closed
 
 
 def cmd_scrape():
@@ -60,7 +60,16 @@ def cmd_scrape():
 
     # CLI mode: no user_id — seen IDs are raw (unscoped) 16-char hashes
     seen = get_seen_ids(user_id=None)
+    actioned = get_actioned_fingerprints(user_id=None)
     new_jobs = [j for j in jobs if j["id"] not in seen]
+
+    # Cross-source dedup: skip any job whose (title, company) already has a
+    # non-new status so skipped/applied jobs don't resurface from a new source.
+    new_jobs = [
+        j for j in new_jobs
+        if ((j.get("title") or "").lower().strip(),
+            (j.get("company") or "").lower().strip()) not in actioned
+    ]
 
     # Collapse duplicates by (normalized title, normalized company)
     _seen_tc: dict[tuple, dict] = {}

@@ -2879,9 +2879,19 @@ elif page == "Run Pipeline":
 
         st.info(f"Scraped {len(jobs)} jobs total")
 
-        from tracker import get_seen_ids
+        from tracker import get_seen_ids, get_actioned_fingerprints
         seen = get_seen_ids(user_id=_USER_ID)
+        actioned = get_actioned_fingerprints(user_id=_USER_ID)
         new_jobs = [j for j in jobs if _scope_id(j["id"], _USER_ID) not in seen]
+
+        # Cross-source dedup: drop jobs whose (title, company) already has a
+        # non-new status (skipped/applied/etc) regardless of which source/URL
+        # they came from this time.
+        new_jobs = [
+            j for j in new_jobs
+            if ((j.get("title") or "").lower().strip(),
+                (j.get("company") or "").lower().strip()) not in actioned
+        ]
 
         _seen_tc: dict[tuple, dict] = {}
         for j in new_jobs:

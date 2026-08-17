@@ -539,6 +539,28 @@ def get_seen_ids(user_id: str | None = None) -> set[str]:
     return {row["id"] for row in (result.data or [])}
 
 
+def get_actioned_fingerprints(user_id: str | None = None) -> set[tuple]:
+    """Return (title_lower, company_lower) pairs for all non-new jobs.
+
+    Used to block cross-source duplicates: a job skipped from LinkedIn
+    should not reappear if the same role is later scraped from Indeed with
+    a different URL (different ID, same title+company).
+    """
+    sb = get_client()
+    q = (
+        sb.table("job_applications")
+        .select("title,company")
+        .neq("status", "new")
+    )
+    if user_id:
+        q = q.eq("user_id", user_id)
+    rows = q.execute().data or []
+    return {
+        ((r.get("title") or "").lower().strip(), (r.get("company") or "").lower().strip())
+        for r in rows
+    }
+
+
 def clear_queue(user_id: str | None = None):
     """Delete all status='new' jobs for the user (clears the review queue)."""
     sb = get_client()
