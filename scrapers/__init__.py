@@ -6,6 +6,8 @@ from .remoteok import scrape_remoteok
 from .adzuna import scrape_adzuna
 from .usajobs import scrape_usajobs
 from .themuse import scrape_themuse
+from .google_jobs import scrape_google_jobs
+from .handshake import scrape_handshake
 import inspect
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -64,6 +66,8 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
 
     sources = [
         ("LinkedIn",         scrape_linkedin),
+        ("Google Jobs",      scrape_google_jobs),
+        ("Handshake",        scrape_handshake),
         ("RemoteOK",         scrape_remoteok),
         ("Remotive",         scrape_remotive),
         ("We Work Remotely", scrape_weworkremotely),

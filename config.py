@@ -182,6 +182,15 @@ ADZUNA_APP_KEY = _secret("ADZUNA_APP_KEY")
 USAJOBS_API_KEY = _secret("USAJOBS_API_KEY")
 USAJOBS_EMAIL   = _secret("USAJOBS_EMAIL")
 
+# ── SerpAPI (Google Jobs) ────────────────────────────────────────────
+# Free tier: 100 searches/month — https://serpapi.com
+SERPAPI_KEY = _secret("SERPAPI_KEY")
+
+# ── Handshake ────────────────────────────────────────────────────────
+# Opt-in: paste your token from browser DevTools → Application → Cookies
+# (remember_user_token on app.joinhandshake.com) into .env
+HANDSHAKE_TOKEN = _secret("HANDSHAKE_TOKEN")
+
 # ── Scoring backend strategy ────────────────────────────────────────
 # claude = current behavior (best quality, highest cost)
 # cheap  = heuristic-only local scoring (lowest cost)
