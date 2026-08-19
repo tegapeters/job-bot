@@ -647,22 +647,43 @@ render_auth_wall()
 restore_user_session()
 _USER_ID = get_user_id()  # set once per Streamlit run, passed to all tracker calls
 
-# ── Tag color patch — injected after auth so it runs after Streamlit's
-#    theme JS has fired; overrides the green primaryColor on BasWeb tags.
-st.markdown("""
-<style>
-span[data-baseweb="tag"],span[data-baseweb="tag"][style]{
-  background:#2a2a2e!important;background-color:#2a2a2e!important;
-  color:#c8c8c0!important;border:1px solid #3e3e44!important;border-radius:4px!important;
-}
-span[data-baseweb="tag"] span,span[data-baseweb="tag"][style] span{
-  color:#c8c8c0!important;background:transparent!important;background-color:transparent!important;
-}
-span[data-baseweb="tag"] svg,span[data-baseweb="tag"] button,span[data-baseweb="tag"] [role="presentation"]{
-  color:#888!important;fill:#888!important;background:transparent!important;background-color:transparent!important;
-}
-</style>
-""", unsafe_allow_html=True)
+# ── Tag color patch — JS MutationObserver via same-origin iframe.
+#    CSS !important loses to Emotion (BasWeb CSS-in-JS) because Emotion
+#    re-injects <style> into <head> after every render. JS setProperty with
+#    'important' wins because it writes directly to the element's inline style,
+#    which is the highest specificity layer. The observer re-fires on any
+#    DOM/attribute mutation so newly-rendered tags are caught immediately.
+import streamlit.components.v1 as _components
+_components.html("""
+<script>
+(function(){
+  function fix(){
+    var tags=window.parent.document.querySelectorAll('span[data-baseweb="tag"]');
+    tags.forEach(function(t){
+      t.style.setProperty('background','#2a2a2e','important');
+      t.style.setProperty('background-color','#2a2a2e','important');
+      t.style.setProperty('color','#c8c8c0','important');
+      t.style.setProperty('border','1px solid #3e3e44','important');
+      t.style.setProperty('border-radius','4px','important');
+      t.querySelectorAll('span').forEach(function(s){
+        s.style.setProperty('color','#c8c8c0','important');
+        s.style.setProperty('background','transparent','important');
+        s.style.setProperty('background-color','transparent','important');
+      });
+      t.querySelectorAll('svg,button,[role="presentation"]').forEach(function(s){
+        s.style.setProperty('color','#666','important');
+        s.style.setProperty('fill','#666','important');
+      });
+    });
+  }
+  fix();
+  new MutationObserver(fix).observe(
+    window.parent.document.body,
+    {childList:true,subtree:true,attributes:true,attributeFilter:['style','class']}
+  );
+})();
+</script>
+""", height=0)
 
 
 # ── Session persistence: restore from ?uid= query param ───────────
