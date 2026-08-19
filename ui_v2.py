@@ -251,8 +251,11 @@ st.markdown("""
   }
 
   /* ── Multiselect tags ── */
+  /* Target all variants including those with Streamlit-injected inline style= */
   span[data-baseweb="tag"],
+  span[data-baseweb="tag"][style],
   [data-testid="stMultiSelect"] span[data-baseweb="tag"],
+  [data-testid="stMultiSelect"] span[data-baseweb="tag"][style],
   [data-baseweb="select"] span[data-baseweb="tag"],
   div[data-baseweb="select"] span[data-baseweb="tag"] {
     background: #2a2a2e !important;
@@ -263,6 +266,7 @@ st.markdown("""
   }
   span[data-baseweb="tag"] span,
   span[data-baseweb="tag"] > span,
+  span[data-baseweb="tag"][style] span,
   [data-testid="stMultiSelect"] span[data-baseweb="tag"] span,
   [data-testid="stMultiSelect"] span[data-baseweb="tag"] > span {
     color: #c8c8c0 !important;
@@ -642,6 +646,23 @@ st.markdown("""
 render_auth_wall()
 restore_user_session()
 _USER_ID = get_user_id()  # set once per Streamlit run, passed to all tracker calls
+
+# ── Tag color patch — injected after auth so it runs after Streamlit's
+#    theme JS has fired; overrides the green primaryColor on BasWeb tags.
+st.markdown("""
+<style>
+span[data-baseweb="tag"],span[data-baseweb="tag"][style]{
+  background:#2a2a2e!important;background-color:#2a2a2e!important;
+  color:#c8c8c0!important;border:1px solid #3e3e44!important;border-radius:4px!important;
+}
+span[data-baseweb="tag"] span,span[data-baseweb="tag"][style] span{
+  color:#c8c8c0!important;background:transparent!important;background-color:transparent!important;
+}
+span[data-baseweb="tag"] svg,span[data-baseweb="tag"] button,span[data-baseweb="tag"] [role="presentation"]{
+  color:#888!important;fill:#888!important;background:transparent!important;background-color:transparent!important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 
 # ── Session persistence: restore from ?uid= query param ───────────
