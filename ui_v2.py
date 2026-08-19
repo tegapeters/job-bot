@@ -251,15 +251,32 @@ st.markdown("""
   }
 
   /* ── Multiselect tags ── */
+  span[data-baseweb="tag"],
   [data-testid="stMultiSelect"] span[data-baseweb="tag"],
-  span[data-baseweb="tag"] {
+  [data-baseweb="select"] span[data-baseweb="tag"],
+  div[data-baseweb="select"] span[data-baseweb="tag"] {
     background: #2a2a2e !important;
+    background-color: #2a2a2e !important;
     color: #c8c8c0 !important;
     border: 1px solid #3e3e44 !important;
+    border-radius: 4px !important;
   }
+  span[data-baseweb="tag"] span,
+  span[data-baseweb="tag"] > span,
   [data-testid="stMultiSelect"] span[data-baseweb="tag"] span,
-  span[data-baseweb="tag"] span {
+  [data-testid="stMultiSelect"] span[data-baseweb="tag"] > span {
     color: #c8c8c0 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+  /* X button inside tags */
+  span[data-baseweb="tag"] [role="presentation"],
+  span[data-baseweb="tag"] button,
+  span[data-baseweb="tag"] svg {
+    color: #888 !important;
+    fill: #888 !important;
+    background: transparent !important;
+    background-color: transparent !important;
   }
 
   /* ── Slider thumb + track ── */
