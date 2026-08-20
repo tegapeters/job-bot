@@ -129,12 +129,31 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
 
     # ── Dedup by URL ──────────────────────────────────────────────
     seen_urls: set[str] = set()
-    unique = []
+    url_unique = []
     for j in all_jobs:
         key = j.get("url") or j.get("id")
         if key and key not in seen_urls:
             seen_urls.add(key)
-            unique.append(j)
+            url_unique.append(j)
+
+    # ── Cross-source dedup by (title, company) ────────────────────
+    # Same role posted on LinkedIn, Google Jobs, Indeed etc. will have
+    # different URLs but identical title+company. Keep whichever copy
+    # has the longest description (most detail for scoring).
+    tc_best: dict[tuple, dict] = {}
+    for j in url_unique:
+        key = (
+            (j.get("title") or "").lower().strip(),
+            (j.get("company") or "").lower().strip(),
+        )
+        existing = tc_best.get(key)
+        if existing is None or len(j.get("description") or "") > len(existing.get("description") or ""):
+            tc_best[key] = j
+    unique = list(tc_best.values())
+
+    cross_dupes = len(url_unique) - len(unique)
+    if cross_dupes:
+        print(f"   🔁 Cross-source dedup removed {cross_dupes} duplicate(s) (same title+company, different source)")
 
     # ── Strict role enforcement (safety net) ─────────────────────
     if target_roles:
