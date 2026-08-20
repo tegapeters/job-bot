@@ -67,7 +67,6 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
     sources = [
         ("LinkedIn",         scrape_linkedin),
         ("Google Jobs",      scrape_google_jobs),
-        ("Handshake",        scrape_handshake),
         ("RemoteOK",         scrape_remoteok),
         ("Remotive",         scrape_remotive),
         ("We Work Remotely", scrape_weworkremotely),
