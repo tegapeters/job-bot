@@ -23,6 +23,7 @@ from tracker import (
 from sessions import save_session, load_session, clear_session, new_uid, save_chat_history, load_chat_history, clear_chat_history, save_gmail_opt_in
 from auth import render_auth_wall, restore_user_session, get_user_id, get_user_email, sign_out
 from config import REVIEW_MIN_SCORE
+from agent import _extract_salary_from_text
 
 # ── Page config ────────────────────────────────────────────────────
 st.set_page_config(
@@ -383,6 +384,12 @@ st.markdown("""
     .swipe-card { padding: 20px 18px 18px; border-radius: 10px; }
     .sc-title { font-size: 22px; }
     .sc-score-badge { font-size: 42px; }
+    /* Bigger tap targets for Skip / Pass / Apply on mobile */
+    div[data-testid="column"] div.stButton > button {
+      min-height: 52px !important;
+      font-size: 15px !important;
+      border-radius: 10px !important;
+    }
   }
 
   /* ── Funnel row ── */
@@ -578,10 +585,15 @@ def status_tag(status):
     label = {"application_closed": "closed", "no_response": "no response"}.get(status, status)
     return f'<span class="{cls}">{label}</span>'
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_all_applications(user_id: str | None) -> list:
+    return get_all_applications(user_id=user_id)
+
+
 def safe_get_apps():
     """Fetch all applications for the current user."""
     try:
-        return get_all_applications(user_id=_USER_ID)
+        return _cached_all_applications(_USER_ID)
     except Exception as e:
         st.error(f"Cannot connect to database. Check Supabase secrets in Streamlit Cloud settings. Error: `{e}`")
         st.stop()
@@ -667,7 +679,6 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             st.markdown(f"**Location:** {job.get('location', 'Unknown')}")
             st.markdown(f"**Score reason:** {job.get('score_reason', '')}")
             # Use stored salary_range first; only re-parse description as fallback
-            from agent import _extract_salary_from_text
             salary_range = job.get("salary_range") or _extract_salary_from_text(job.get("description", ""))
             salary_match = job.get("salary_match", "Unknown")
             _is_academic = st.session_state.get("vertical") == "academic"
@@ -982,7 +993,6 @@ def _render_swipe_card_mode(display_queue):
     else:
         days_tag = ""
 
-    from agent import _extract_salary_from_text
     salary = job.get("salary_range") or _extract_salary_from_text(job.get("description", ""))
     salary_tag = f'<span class="sc-tag salary">{salary}</span>' if salary else ""
 
@@ -1046,26 +1056,27 @@ def _render_swipe_card_mode(display_queue):
         if (e.key === 'ArrowDown')  { e.preventDefault(); clickBtn('Pass'); }
       });
 
-      // Touch swipe with live card drag + indicators
-      var tx = 0, ty = 0, dragging = false;
+      // Touch swipe — triggers on distance (>60px) OR velocity (>0.35px/ms flick)
+      var tx = 0, ty = 0, tt = 0, dragging = false;
       document.addEventListener('touchstart', function(e) {
         tx = e.touches[0].clientX;
         ty = e.touches[0].clientY;
+        tt = Date.now();
         dragging = false;
       }, { passive: true });
 
       document.addEventListener('touchmove', function(e) {
         var dx = e.touches[0].clientX - tx;
         var dy = e.touches[0].clientY - ty;
-        if (!dragging && Math.abs(dx) < Math.abs(dy)) return; // vertical scroll
+        if (!dragging && Math.abs(dx) < Math.abs(dy)) return;
         dragging = true;
         var card = document.getElementById('jp-swipe-card');
         if (!card) return;
         card.style.transform = 'translateX(' + (dx * 0.35) + 'px) rotate(' + (dx * 0.018) + 'deg)';
         var si = document.getElementById('jp-skip-ind');
         var ai = document.getElementById('jp-apply-ind');
-        if (si)  si.style.opacity  = dx < -20 ? Math.min(1, (-dx - 20) / 70).toFixed(2) : 0;
-        if (ai) ai.style.opacity  = dx > 20  ? Math.min(1, (dx - 20) / 70).toFixed(2)  : 0;
+        if (si) si.style.opacity = dx < -20 ? Math.min(1, (-dx - 20) / 60).toFixed(2) : 0;
+        if (ai) ai.style.opacity = dx > 20  ? Math.min(1, (dx - 20) / 60).toFixed(2)  : 0;
       }, { passive: true });
 
       document.addEventListener('touchend', function(e) {
@@ -1073,11 +1084,12 @@ def _render_swipe_card_mode(display_queue):
         if (card) card.style.transform = '';
         var si = document.getElementById('jp-skip-ind');
         var ai = document.getElementById('jp-apply-ind');
-        if (si) si.style.opacity  = 0;
+        if (si) si.style.opacity = 0;
         if (ai) ai.style.opacity = 0;
         if (!dragging) return;
-        var dx = e.changedTouches[0].clientX - tx;
-        if (Math.abs(dx) > 75) {
+        var dx   = e.changedTouches[0].clientX - tx;
+        var vel  = Math.abs(dx) / Math.max(1, Date.now() - tt); // px/ms
+        if (Math.abs(dx) > 60 || vel > 0.35) {
           if (dx < 0) clickBtn('← Skip');
           else        clickBtn('Apply →');
         }
@@ -1143,7 +1155,7 @@ def _build_assistant_system_prompt(page_context: str = "") -> str:
     """Build the shared assistant system prompt with live pipeline context."""
     apps = []
     try:
-        apps = get_all_applications(user_id=_USER_ID) or []
+        apps = _cached_all_applications(_USER_ID) or []
     except Exception:
         pass
     resume_text = st.session_state.get("resume_text") or ""
@@ -3049,7 +3061,7 @@ elif page == "Assistant":
 
     # ── Pull live pipeline data (single query) ──────────────────────
     try:
-        _asst_apps = get_all_applications(user_id=_USER_ID) or []
+        _asst_apps = _cached_all_applications(_USER_ID) or []
     except Exception:
         _asst_apps = []
 
