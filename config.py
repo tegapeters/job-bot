@@ -27,6 +27,14 @@ def _secret(*names: str) -> str | None:
     return None
 
 
+# ── Vertical ────────────────────────────────────────────────────────
+# Which job market this run targets. Controls source selection (scrapers),
+# the scoring rubric (agent.py), and UI labels.
+#   "tech"     = the original tech / business job market (default)
+#   "academic" = higher-ed faculty / adjunct / lecturer positions
+# UI runs pass the per-user choice explicitly; this is the CLI/default.
+VERTICAL = os.getenv("VERTICAL", "tech").strip().lower()
+
 # ── Job Preferences ────────────────────────────────────────────────
 TARGET_ROLES = [
     "Data Scientist",
@@ -38,6 +46,61 @@ TARGET_ROLES = [
     "Senior Systems Analyst",
     "Senior Data Analyst",
 ]
+
+# Default academic search terms (disciplines + appointment types) used for
+# CLI academic runs and as the UI Setup default when the vertical is academic.
+ACADEMIC_ROLES = [
+    "Adjunct Professor",
+    "Lecturer",
+    "Assistant Professor",
+    "Visiting Professor",
+    "Instructor",
+]
+
+# Words that flag a posting as a faculty/teaching role. Used to keep the
+# role safety-net filter in scrape_all() from dropping legitimate academic
+# titles that don't literally contain a target-role phrase.
+ACADEMIC_TITLE_KEYWORDS = [
+    "professor", "adjunct", "lecturer", "instructor", "faculty",
+    "postdoc", "post-doctoral", "postdoctoral", "visiting scholar",
+    "teaching", "clinical faculty", "tenure",
+]
+
+# Academic-mode exclusions layered on top of EXCLUDE_KEYWORDS. Faculty roles
+# are often "entry level" in rank yet still relevant, so the tech exclusions
+# ("junior", "entry level", "intern") must NOT apply in academic mode — this
+# list replaces them with academic-appropriate noise filters instead.
+ACADEMIC_EXCLUDE_KEYWORDS = [
+    "work study", "student worker", "graduate assistantship",
+    "resident assistant",
+]
+
+# Higher-ed job RSS feeds, grouped by source. Each scraper reads its own
+# group. Feed URLs are kept here (not hardcoded in the scrapers) so a broken
+# or changed endpoint is a one-line config fix, not a code change. Override
+# per deployment with the ACADEMIC_FEEDS_* env vars (comma-separated URLs).
+def _feed_list(env_name: str, default: list[str]) -> list[str]:
+    raw = os.getenv(env_name, "")
+    if raw.strip():
+        return [u.strip() for u in raw.split(",") if u.strip()]
+    return default
+
+# HigherEdJobs publishes standard RSS 2.0 category feeds. catID values below
+# map to faculty discipline categories on higheredjobs.com. Verify/adjust the
+# active set for production via the ACADEMIC_FEEDS_HIGHEREDJOBS env var.
+HIGHEREDJOBS_FEEDS = _feed_list("ACADEMIC_FEEDS_HIGHEREDJOBS", [
+    "https://www.higheredjobs.com/rss/categoryFeed.cfm?catID=1",   # Faculty - Agriculture/Natural Resources
+    "https://www.higheredjobs.com/rss/categoryFeed.cfm?catID=101", # Faculty - Science/Technology
+    "https://www.higheredjobs.com/rss/categoryFeed.cfm?catID=140", # Faculty - Business
+    "https://www.higheredjobs.com/rss/categoryFeed.cfm?catID=200", # Faculty - Liberal Arts/Humanities
+])
+
+# Inside Higher Ed Careers (Madgex platform) exposes a keyword-searchable RSS
+# feed. {query} is URL-encoded and substituted per target role by the scraper.
+INSIDEHIGHERED_FEED_TEMPLATE = os.getenv(
+    "ACADEMIC_FEED_INSIDEHIGHERED",
+    "https://careers.insidehighered.com/jobsrss/?keywords={query}",
+)
 
 LOCATIONS_REMOTE = ["Remote", "United States"]
 LOCATIONS_HYBRID = ["Remote", "United States"]

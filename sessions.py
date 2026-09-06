@@ -9,6 +9,12 @@ Table (run once in Supabase SQL editor):
         target_roles jsonb,
         updated_at  timestamptz default now()
     );
+
+To enable the academic (faculty/adjunct) vertical, add:
+    alter table user_sessions add column if not exists vertical text default 'tech';
+    alter table user_sessions add column if not exists schedule_pref text;
+Both are handled defensively below — the app still works if the columns are
+absent (the vertical just won't persist across refreshes until they're added).
 """
 import uuid
 from datetime import datetime, timezone
@@ -16,25 +22,48 @@ from tracker import get_client
 
 
 def save_session(uid: str, resume_text: str, target_roles: list[str],
-                 preferred_locations: list[str] | None = None) -> str:
-    """Upsert session. Returns the uid."""
+                 preferred_locations: list[str] | None = None,
+                 vertical: str | None = None,
+                 schedule_pref: str | None = None) -> str:
+    """Upsert session. Returns the uid.
+
+    `vertical` and `schedule_pref` are written when the columns exist; if they
+    don't, the upsert is retried without them so saving still succeeds."""
     sb = get_client()
-    sb.table("user_sessions").upsert({
+    row = {
         "id": uid,
         "resume_text": resume_text,
         "target_roles": target_roles,
         "preferred_locations": preferred_locations or [],
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }, on_conflict="id").execute()
+    }
+    if vertical is not None:
+        row["vertical"] = vertical
+    if schedule_pref is not None:
+        row["schedule_pref"] = schedule_pref
+    try:
+        sb.table("user_sessions").upsert(row, on_conflict="id").execute()
+    except Exception:
+        # Column(s) missing from schema cache — drop the optional ones and retry.
+        for k in ("vertical", "schedule_pref"):
+            row.pop(k, None)
+        sb.table("user_sessions").upsert(row, on_conflict="id").execute()
     return uid
 
 
 def load_session(uid: str) -> dict | None:
-    """Return {resume_text, target_roles, gmail_scan_enabled, preferred_locations} or None if not found."""
+    """Return {resume_text, target_roles, gmail_scan_enabled, preferred_locations,
+    vertical, schedule_pref} or None if not found. Falls back gracefully when
+    the vertical columns are absent."""
     sb = get_client()
-    result = sb.table("user_sessions").select(
-        "resume_text,target_roles,gmail_scan_enabled,preferred_locations"
-    ).eq("id", uid).execute()
+    try:
+        result = sb.table("user_sessions").select(
+            "resume_text,target_roles,gmail_scan_enabled,preferred_locations,vertical,schedule_pref"
+        ).eq("id", uid).execute()
+    except Exception:
+        result = sb.table("user_sessions").select(
+            "resume_text,target_roles,gmail_scan_enabled,preferred_locations"
+        ).eq("id", uid).execute()
     if result.data:
         return result.data[0]
     return None

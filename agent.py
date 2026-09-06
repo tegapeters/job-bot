@@ -77,6 +77,79 @@ Candidate Salary Target: {salary_target}
 Description:
 {description}"""
 
+# ── Academic (higher-ed faculty / adjunct) rubric ──────────────────
+# Faculty hiring cares about degree-in-field, discipline fit, teaching
+# capacity, and schedule/appointment fit — NOT tech-style seniority, salary
+# bands, or remote/hybrid work arrangement.
+SCORE_SYSTEM_TEMPLATE_ACADEMIC = """You are a strict faculty-hiring fit evaluator for higher-education teaching positions (adjunct, lecturer, instructor, visiting, tenure-track). Score how well the CANDIDATE BACKGROUND fits the faculty posting on a 1–10 scale. Be conservative — underscore a mediocre fit rather than overscore a weak one.
+
+Scoring guidelines:
+10 — Near-perfect: terminal/required degree squarely in the posting's discipline, clear teaching capacity for the listed courses, appointment type and schedule fit the candidate. Rare.
+ 9 — Excellent: required degree in-field, strong subject-matter and teaching alignment, could teach the listed courses now.
+ 8 — Good: required degree in a closely related field, solid subject alignment, minor gaps in teaching experience or exact sub-field.
+ 7 — Partial: relevant background but a meaningful gap — degree adjacent (not in the exact discipline), OR strong industry/subject knowledge but thin formal teaching experience, OR one rank tier of mismatch.
+ 6 — Weak: some transferable subject knowledge but missing the required degree level or the core discipline.
+ 5 — Long shot: tangential field; would be a stretch for the department to justify.
+1–4 — Poor/no match: wrong discipline, missing the minimum required degree, or the role is not a teaching role the candidate can fill.
+
+Calibration rules — apply before finalising:
+- When between two adjacent scores, pick the lower.
+- The MINIMUM DEGREE is a hard gate. Community-college and most adjunct roles require a master's in (or closely related to) the discipline; many university/tenure-track roles require a doctorate. If the candidate lacks the minimum degree the posting requires, cap at 5 regardless of industry experience.
+- A master's in-field PLUS substantial applied/industry experience is a STRONG adjunct/lecturer profile even without a PhD — score such fits well for adjunct/lecturer/instructor roles (do not cap for the missing PhD when the role does not require one).
+- Discipline alignment matters more than institutional prestige. Judge whether the candidate can credibly teach the posting's subject.
+- Schedule / availability fit: if CANDIDATE TEACHING AVAILABILITY is provided, reward a posting whose schedule matches it (e.g. evening/night, early-morning, weekend, or online sections) and drop the score by 1 when the posting clearly requires a schedule the candidate cannot meet. If schedule is unstated, treat it as NEUTRAL — do not penalise.
+- A vague posting that makes fit hard to assess scores 6, not 7.
+
+Evaluate in this order:
+1. Degree gate: does the candidate meet the minimum required degree for this rank/role?
+2. Discipline fit: can the candidate credibly teach this subject?
+3. Teaching capacity: formal teaching, mentoring, training, or strong applied expertise to convey.
+4. Appointment/rank fit: adjunct/lecturer/instructor vs tenure-track — is this a credible application?
+5. Schedule fit: only when both the posting's schedule and the candidate's availability are known.
+
+CANDIDATE BACKGROUND:
+{resume}
+
+Respond in exactly this format (no extra text):
+SCORE: <number 1-10>
+REASON: <one sentence explaining the primary factor>
+RANK: <Adjunct|Lecturer|Instructor|Assistant|Associate|Full|Visiting|Postdoc|Unknown>
+DEGREE_MATCH: <Yes|No|Unknown>"""
+
+SCORE_USER_TEMPLATE_ACADEMIC = """FACULTY POSTING:
+Title: {title}
+Institution: {company}
+Location: {location}
+Rank: {rank}
+Appointment type: {appointment_type}
+Candidate teaching availability: {schedule_pref}
+Description:
+{description}"""
+
+COVER_LETTER_SYSTEM_TEMPLATE_ACADEMIC = """Write a faculty cover letter / letter of interest body for a higher-education teaching application. 3 paragraphs, ~250–350 words.
+
+Rules:
+- Write ONLY the letter body — no contact header, no address block, no date, no salutation
+- Sign off with just the candidate's full name (as it appears in the resume) on its own line
+- First person throughout
+- Open with the candidate's degree in the discipline and the strongest teaching or applied-expertise match to the courses named in the posting
+- Second paragraph: concrete evidence of ability to teach and mentor — courses, training delivered, applied projects, or industry experience the candidate would bring into the classroom, with specifics from the resume
+- Third paragraph: why this institution/department and this appointment, and (if the candidate's teaching availability is provided) a brief note of schedule flexibility (e.g. evening, early-morning, or weekend sections)
+- Never use filler like "I am writing to express my interest"
+- Be specific to the posting — reference the discipline, courses, and appointment type
+
+CANDIDATE RESUME:
+{resume}
+
+CANDIDATE TEACHING AVAILABILITY: {schedule_pref}"""
+
+COVER_LETTER_USER_TEMPLATE_ACADEMIC = """Write a faculty cover letter body for this posting:
+
+Title: {title}
+Institution: {company}
+Posting:
+{description}"""
+
 COVER_LETTER_SYSTEM_TEMPLATE = """Write a cover letter body for a job application. 3 paragraphs, ~250–350 words.
 
 Rules:
@@ -267,11 +340,12 @@ def _role_matches_title(title: str, roles: list[str]) -> bool:
     return False
 
 
-def _parse_score_response(text: str) -> dict:
-    score_match    = re.search(r"SCORE:\s*(\d+)", text)
-    reason_match   = re.search(r"REASON:\s*(.+?)(?:\n|$)", text)
-    seniority_match = re.search(r"SENIORITY:\s*(Junior|Mid|Senior|Director)", text, re.IGNORECASE)
-    salary_match   = re.search(r"SALARY_MATCH:\s*(Yes|No|Unknown)", text, re.IGNORECASE)
+_ACADEMIC_RANKS = "Adjunct|Lecturer|Instructor|Assistant|Associate|Full|Visiting|Postdoc|Unknown"
+
+
+def _parse_score_response(text: str, vertical: str = "tech") -> dict:
+    score_match  = re.search(r"SCORE:\s*(\d+)", text)
+    reason_match = re.search(r"REASON:\s*(.+?)(?:\n|$)", text)
 
     if not score_match:
         raise ValueError(f"No SCORE field in response: {text!r}")
@@ -279,15 +353,30 @@ def _parse_score_response(text: str) -> dict:
     if not 1 <= score <= 10:
         raise ValueError(f"Score {score} out of valid range 1–10")
 
-    return {
+    result = {
         "score":        score,
         "score_reason": reason_match.group(1).strip() if reason_match else "",
-        "seniority":    seniority_match.group(1).capitalize() if seniority_match else "",
-        "salary_match": salary_match.group(1).capitalize() if salary_match else "Unknown",
     }
 
+    if vertical == "academic":
+        rank_match   = re.search(rf"RANK:\s*({_ACADEMIC_RANKS})", text, re.IGNORECASE)
+        degree_match = re.search(r"DEGREE_MATCH:\s*(Yes|No|Unknown)", text, re.IGNORECASE)
+        # `seniority` column carries the faculty rank so the existing schema/UI
+        # can display it without a DB migration.
+        result["seniority"]    = rank_match.group(1).capitalize() if rank_match else "Unknown"
+        result["salary_match"] = "Unknown"
+        result["degree_match"] = degree_match.group(1).capitalize() if degree_match else "Unknown"
+    else:
+        seniority_match = re.search(r"SENIORITY:\s*(Junior|Mid|Senior|Director)", text, re.IGNORECASE)
+        salary_match    = re.search(r"SALARY_MATCH:\s*(Yes|No|Unknown)", text, re.IGNORECASE)
+        result["seniority"]    = seniority_match.group(1).capitalize() if seniority_match else ""
+        result["salary_match"] = salary_match.group(1).capitalize() if salary_match else "Unknown"
 
-def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0) -> dict:
+    return result
+
+
+def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0,
+                     vertical: str = "tech", schedule_pref: str = None) -> dict:
     """Score a job with Claude. Requires resume_text — no fallback to config."""
     if not resume_text:
         job.update({"score": 0, "score_reason": "No resume loaded", "seniority": "", "salary_match": "Unknown"})
@@ -298,28 +387,40 @@ def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0) ->
 
     desc = job.get("description", "")
 
-    # Extract salary from description if not already in the dedicated field
-    salary_field = job.get("salary_range") or job.get("salary")
-    if not salary_field:
-        salary_field = _extract_salary_from_text(desc) or "Not listed"
-        if salary_field != "Not listed":
-            job["salary_range"] = salary_field  # cache for UI display
+    if vertical == "academic":
+        system_text = SCORE_SYSTEM_TEMPLATE_ACADEMIC.format(resume=resume_text)
+        user_text = SCORE_USER_TEMPLATE_ACADEMIC.format(
+            title=job["title"],
+            company=job.get("company", ""),
+            location=job.get("location", "") or "Not listed",
+            rank=job.get("rank", "") or "Not listed",
+            appointment_type=job.get("appointment_type", "") or "Not listed",
+            schedule_pref=schedule_pref or "Not specified",
+            description=desc[:3000],
+        )
+    else:
+        # Extract salary from description if not already in the dedicated field
+        salary_field = job.get("salary_range") or job.get("salary")
+        if not salary_field:
+            salary_field = _extract_salary_from_text(desc) or "Not listed"
+            if salary_field != "Not listed":
+                job["salary_range"] = salary_field  # cache for UI display
 
-    salary_target = f"${min_salary:,}+" if min_salary else "Not specified (infer from resume if stated)"
+        salary_target = f"${min_salary:,}+" if min_salary else "Not specified (infer from resume if stated)"
 
-    system_text = SCORE_SYSTEM_TEMPLATE.format(resume=resume_text)
-    _wt = job.get("work_type") or "unknown"
-    work_type_label = {"remote": "Remote", "hybrid": "Hybrid (flexible)", "onsite": "Onsite"}.get(_wt, "Not specified")
+        system_text = SCORE_SYSTEM_TEMPLATE.format(resume=resume_text)
+        _wt = job.get("work_type") or "unknown"
+        work_type_label = {"remote": "Remote", "hybrid": "Hybrid (flexible)", "onsite": "Onsite"}.get(_wt, "Not specified")
 
-    user_text = SCORE_USER_TEMPLATE.format(
-        title=job["title"],
-        company=job.get("company", ""),
-        location=job.get("location", ""),
-        work_type=work_type_label,
-        salary=salary_field,
-        salary_target=salary_target,
-        description=desc[:3000],
-    )
+        user_text = SCORE_USER_TEMPLATE.format(
+            title=job["title"],
+            company=job.get("company", ""),
+            location=job.get("location", ""),
+            work_type=work_type_label,
+            salary=salary_field,
+            salary_target=salary_target,
+            description=desc[:3000],
+        )
 
     # Compute lightweight features alongside Claude — persisted for future model training
     try:
@@ -345,7 +446,7 @@ def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0) ->
                 system=[{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_text}],
             )
-            parsed = _parse_score_response(msg.content[0].text.strip())
+            parsed = _parse_score_response(msg.content[0].text.strip(), vertical=vertical)
             job.update(parsed)
             job["scored_by"] = SCORE_MODEL
             return job
@@ -368,17 +469,52 @@ def score_job_claude(job: dict, resume_text: str = None, min_salary: int = 0) ->
     return job
 
 
+def _score_job_cheap_academic(job: dict, target_roles: list[str] = None) -> dict:
+    """Lightweight academic pre-filter. The tech skill vocabulary is meaningless
+    for faculty roles, so score on faculty-keyword + target-role/discipline
+    match instead. Kept generous — its only job is to avoid discarding real
+    faculty postings before Claude scores them."""
+    from config import ACADEMIC_TITLE_KEYWORDS
+    title = (job.get("title") or "").lower()
+    desc  = (job.get("description") or "").lower()
+    hay   = f"{title} {desc}"
+    roles = [r.lower() for r in (target_roles or [])]
+
+    score = 5
+    reasons = []
+    if any(kw in title for kw in ACADEMIC_TITLE_KEYWORDS):
+        score += 2
+        reasons.append("faculty role in title")
+    elif any(kw in hay for kw in ACADEMIC_TITLE_KEYWORDS):
+        score += 1
+        reasons.append("faculty role in posting")
+    if roles and any(r in hay for r in roles):
+        score += 1
+        reasons.append("discipline match")
+
+    job["score"] = max(1, min(10, score))
+    job["score_reason"] = ", ".join(reasons) if reasons else "academic pre-filter"
+    job["seniority"] = job.get("rank", "Unknown") or "Unknown"
+    job["salary_match"] = "Unknown"
+    job["scored_by"] = "heuristic"
+    return job
+
+
 def score_job_cheap(
     job: dict,
     resume_text: str = None,
     min_salary: int = 0,
     target_roles: list[str] = None,
+    vertical: str = "tech",
 ) -> dict:
     """
     Local heuristic scorer. Resume-aware when resume_text is provided:
     extracts skills from the resume and counts overlap with the job description.
     Falls back to config-based patterns when resume_text is absent (CLI mode).
     """
+    if vertical == "academic":
+        return _score_job_cheap_academic(job, target_roles=target_roles)
+
     title       = (job.get("title") or "").lower()
     description = (job.get("description") or "").lower()
     location    = (job.get("location") or "").lower()
@@ -471,34 +607,55 @@ def score_job(
     hybrid_claude_min_score: int = None,
     min_salary: int = 0,
     target_roles: list[str] = None,
+    vertical: str = "tech",
+    schedule_pref: str = None,
 ) -> dict:
-    """Dispatch scoring based on configured backend."""
+    """Dispatch scoring based on configured backend.
+
+    Academic mode always uses Claude — the cheap heuristic has no academic
+    rubric worth scoring on (only a coarse pre-filter, used in process_jobs)."""
     backend   = (scoring_backend or SCORING_BACKEND or "claude").strip().lower()
     hybrid_min = hybrid_claude_min_score if hybrid_claude_min_score is not None else HYBRID_CLAUDE_MIN_SCORE
 
-    cheap_kwargs = dict(resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)
+    cheap_kwargs = dict(resume_text=resume_text, min_salary=min_salary,
+                        target_roles=target_roles, vertical=vertical)
+    claude_kwargs = dict(resume_text=resume_text, min_salary=min_salary,
+                         vertical=vertical, schedule_pref=schedule_pref)
+
+    if vertical == "academic":
+        return score_job_claude(job, **claude_kwargs)
 
     if backend == "cheap":
         return score_job_cheap(job, **cheap_kwargs)
     if backend == "hybrid":
         stage1 = score_job_cheap(job, **cheap_kwargs)
         if (stage1.get("score") or 0) >= hybrid_min:
-            return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
+            return score_job_claude(job, **claude_kwargs)
         return stage1
-    return score_job_claude(job, resume_text=resume_text, min_salary=min_salary)
+    return score_job_claude(job, **claude_kwargs)
 
 
-def generate_cover_letter(job: dict, resume_text: str = None) -> str | None:
+def generate_cover_letter(job: dict, resume_text: str = None,
+                          vertical: str = "tech", schedule_pref: str = None) -> str | None:
     """Generate cover letter. Returns None (not an error string) if prerequisites unmet."""
     if not resume_text or not client:
         return None
 
-    system_text = COVER_LETTER_SYSTEM_TEMPLATE.format(resume=resume_text)
-    user_text = COVER_LETTER_USER_TEMPLATE.format(
-        title=job["title"],
-        company=job.get("company", "the company"),
-        description=job.get("description", "")[:3000],
-    )
+    if vertical == "academic":
+        system_text = COVER_LETTER_SYSTEM_TEMPLATE_ACADEMIC.format(
+            resume=resume_text, schedule_pref=schedule_pref or "Not specified")
+        user_text = COVER_LETTER_USER_TEMPLATE_ACADEMIC.format(
+            title=job["title"],
+            company=job.get("company", "the institution"),
+            description=job.get("description", "")[:3000],
+        )
+    else:
+        system_text = COVER_LETTER_SYSTEM_TEMPLATE.format(resume=resume_text)
+        user_text = COVER_LETTER_USER_TEMPLATE.format(
+            title=job["title"],
+            company=job.get("company", "the company"),
+            description=job.get("description", "")[:3000],
+        )
 
     try:
         msg = client.messages.create(
@@ -522,6 +679,8 @@ def process_jobs(
     hybrid_claude_min_score: int = None,
     min_salary: int = 0,
     target_roles: list[str] = None,
+    vertical: str = "tech",
+    schedule_pref: str = None,
 ) -> tuple[list[dict], list[dict]]:
     """
     Score all jobs, generate cover letters for qualified ones.
@@ -535,14 +694,20 @@ def process_jobs(
     mode = (scoring_backend or SCORING_BACKEND or "claude").strip().lower()
     if mode not in {"cheap", "hybrid", "claude"}:
         mode = "claude"
+    # Academic scoring always runs through Claude (no academic cheap rubric).
+    if vertical == "academic":
+        mode = "claude"
 
-    cheap_kwargs = dict(resume_text=resume_text, min_salary=min_salary, target_roles=target_roles)
+    cheap_kwargs = dict(resume_text=resume_text, min_salary=min_salary,
+                        target_roles=target_roles, vertical=vertical)
     score_kwargs = dict(
         resume_text=resume_text,
         scoring_backend=mode,
         hybrid_claude_min_score=hybrid_claude_min_score,
         min_salary=min_salary,
         target_roles=target_roles,
+        vertical=vertical,
+        schedule_pref=schedule_pref,
     )
 
     timings: dict[str, float] = {}
@@ -553,8 +718,12 @@ def process_jobs(
     prescored = [score_job_cheap(job, **cheap_kwargs) for job in jobs]
     timings["pass1_s"] = round(_time.perf_counter() - _t, 1)
 
-    to_enrich      = [j for j in prescored if (j.get("score") or 0) >= 5]
-    rejected_early = [j for j in prescored if (j.get("score") or 0) < 5]
+    # Academic pre-filter is coarse (no real academic heuristic), so keep
+    # everything the scrapers' faculty filter already accepted and let Claude
+    # decide. Tech mode keeps the proven >=5 cutoff.
+    _pref_min = 1 if vertical == "academic" else 5
+    to_enrich      = [j for j in prescored if (j.get("score") or 0) >= _pref_min]
+    rejected_early = [j for j in prescored if (j.get("score") or 0) < _pref_min]
     print(f"  {len(to_enrich)} passed pre-filter · {len(rejected_early)} rejected early  ({timings['pass1_s']}s)")
 
     from fetcher import enrich_jobs
@@ -604,7 +773,8 @@ def process_jobs(
 
         cl_done = 0
         def _gen_letter(job):
-            return job, generate_cover_letter(job, resume_text=resume_text)
+            return job, generate_cover_letter(job, resume_text=resume_text,
+                                              vertical=vertical, schedule_pref=schedule_pref)
 
         with ThreadPoolExecutor(max_workers=3) as pool:
             futures = {pool.submit(_gen_letter, job): job for job in cl_jobs}
