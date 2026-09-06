@@ -710,6 +710,10 @@ def _try_restore_session():
                 st.session_state["preferred_locations"] = data["preferred_locations"]
             if data.get("gmail_scan_enabled"):
                 st.session_state["gmail_scan_enabled"] = True
+            if data.get("vertical"):
+                st.session_state["vertical"] = data["vertical"]
+            if data.get("schedule_pref"):
+                st.session_state["schedule_pref"] = data["schedule_pref"]
     except Exception:
         pass  # silently skip — DB down or uid not found
 
@@ -867,12 +871,19 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             from agent import _extract_salary_from_text
             salary_range = job.get("salary_range") or _extract_salary_from_text(job.get("description", ""))
             salary_match = job.get("salary_match", "Unknown")
-            if salary_range:
-                match_label = {"Yes": "✅", "No": "❌", "Unknown": "—"}.get(salary_match, "—")
-                st.markdown(f"**Salary:** {salary_range} {match_label}")
+            _is_academic = st.session_state.get("vertical") == "academic"
+            if _is_academic:
+                # Faculty roles: rank + appointment type matter, not salary bands.
+                st.markdown(f"**Rank:** {job.get('seniority', 'Unknown') or 'Unknown'}")
+                if job.get("appointment_type"):
+                    st.markdown(f"**Appointment:** {job.get('appointment_type')}")
             else:
-                st.markdown(f"**Salary:** Not listed — match: {salary_match}")
-            st.markdown(f"**Seniority:** {job.get('seniority', 'Unknown')}")
+                if salary_range:
+                    match_label = {"Yes": "✅", "No": "❌", "Unknown": "—"}.get(salary_match, "—")
+                    st.markdown(f"**Salary:** {salary_range} {match_label}")
+                else:
+                    st.markdown(f"**Salary:** Not listed — match: {salary_match}")
+                st.markdown(f"**Seniority:** {job.get('seniority', 'Unknown')}")
             st.markdown(f"**Source:** {job.get('source', '')}")
             if job.get("url"):
                 st.markdown(f"[Open job posting ↗]({job['url']})")
@@ -1550,6 +1561,39 @@ if page == "Setup":
     else:
         st.info("Upload or paste your resume below, then hit **Save**.")
 
+    # ── Vertical: what kind of roles are you looking for? ─────────
+    st.markdown('<div class="section-label" style="margin-top:20px">What are you looking for?</div>', unsafe_allow_html=True)
+    _vert_labels = {
+        "tech":     "💻  Tech & Business roles",
+        "academic": "🎓  Faculty & Adjunct (Higher Ed)",
+    }
+    _vert_keys = list(_vert_labels.keys())
+    _cur_vert = st.session_state.get("vertical", "tech")
+    _sel_vert_label = st.radio(
+        "Vertical",
+        [_vert_labels[k] for k in _vert_keys],
+        index=_vert_keys.index(_cur_vert) if _cur_vert in _vert_keys else 0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    _selected_vertical = _vert_keys[[_vert_labels[k] for k in _vert_keys].index(_sel_vert_label)]
+    st.session_state["vertical"] = _selected_vertical
+
+    # ── Teaching availability (academic only) ────────────────────
+    _schedule_pref = st.session_state.get("schedule_pref", "")
+    if _selected_vertical == "academic":
+        st.caption("Faculty mode: Job Pal scores postings on degree-in-field, discipline and teaching fit — and matches your class-schedule availability for adjunct sections.")
+        _sched_options = ["Evening / night classes", "Early-morning classes", "Weekend classes", "Online / asynchronous"]
+        _saved_sched = [s.strip() for s in (_schedule_pref.split(",") if _schedule_pref else []) if s.strip()]
+        _sched_selected = st.multiselect(
+            "Preferred teaching schedule",
+            _sched_options,
+            default=[s for s in _saved_sched if s in _sched_options],
+            help="Adjunct sections are often evenings/weekends — pick what fits around your schedule.",
+        )
+        _schedule_pref = ", ".join(_sched_selected)
+        st.session_state["schedule_pref"] = _schedule_pref
+
     # ── Resume input: upload or paste ────────────────────────────
     st.markdown('<div class="section-label">Your Resume</div>', unsafe_allow_html=True)
     tab_upload, tab_paste = st.tabs(["Upload File", "Paste Text"])
@@ -1635,7 +1679,10 @@ if page == "Setup":
     # ── Target roles ─────────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:20px">Target Roles — one per line</div>', unsafe_allow_html=True)
 
-    from config import TARGET_ROLES as _DEFAULT_ROLES
+    if _selected_vertical == "academic":
+        from config import ACADEMIC_ROLES as _DEFAULT_ROLES
+    else:
+        from config import TARGET_ROLES as _DEFAULT_ROLES
     saved_roles = st.session_state.get("target_roles") or _DEFAULT_ROLES
     default_roles = "\n".join(saved_roles)
 
@@ -1781,11 +1828,14 @@ if page == "Setup":
             st.session_state["target_roles"] = roles
             st.session_state["min_salary"] = salary_map[selected_salary]
             st.session_state["preferred_locations"] = locs
+            st.session_state["vertical"] = _selected_vertical
+            st.session_state["schedule_pref"] = _schedule_pref
 
             # Persist to Supabase — use auth user_id as key so resume is tied to account
             uid = _USER_ID or st.session_state.get("session_uid") or new_uid()
             try:
-                save_session(uid, clean_text, roles, preferred_locations=locs)
+                save_session(uid, clean_text, roles, preferred_locations=locs,
+                             vertical=_selected_vertical, schedule_pref=_schedule_pref)
                 st.session_state["session_uid"] = uid
                 if not _USER_ID:
                     st.query_params["uid"] = uid
@@ -2928,12 +2978,16 @@ elif page == "Run Pipeline":
                     _n_closed = mark_closed(_closed_ids, user_id=_USER_ID)
                     st.info(f"🚫 Marked {_n_closed} listing(s) as closed — removed from your queue.")
 
-        with st.spinner("Scraping jobs from 8 sources in parallel…"):
+        _vertical = st.session_state.get("vertical", "tech")
+        _schedule_pref = st.session_state.get("schedule_pref") or None
+        _src_label = "higher-ed faculty boards" if _vertical == "academic" else "8 sources"
+        with st.spinner(f"Scraping jobs from {_src_label} in parallel…"):
             from scrapers import scrape_all
             jobs = scrape_all(
                 target_roles=_pipeline_roles,
                 min_salary=st.session_state.get("min_salary", 0),
                 locations=st.session_state.get("preferred_locations") or [],
+                vertical=_vertical,
             )
 
         st.info(f"Scraped {len(jobs)} jobs total")
@@ -2967,7 +3021,7 @@ elif page == "Run Pipeline":
             _roles  = st.session_state.get("target_roles")
             _sal    = st.session_state.get("min_salary", 0)
             for j in new_jobs:
-                score_job_cheap(j, resume_text=_resume, target_roles=_roles, min_salary=_sal)
+                score_job_cheap(j, resume_text=_resume, target_roles=_roles, min_salary=_sal, vertical=_vertical)
             new_jobs = sorted(new_jobs, key=lambda j: j.get("score") or 0, reverse=True)[:BETA_JOB_LIMIT]
             for j in new_jobs:
                 j["score"] = None
@@ -2995,6 +3049,8 @@ elif page == "Run Pipeline":
                 hybrid_claude_min_score=hybrid_min,
                 min_salary=st.session_state.get("min_salary", 0),
                 target_roles=st.session_state.get("target_roles") or [],
+                vertical=_vertical,
+                schedule_pref=_schedule_pref,
             )
 
             progress.progress(80, text=f"Saving {len(qualified)} qualified jobs…")

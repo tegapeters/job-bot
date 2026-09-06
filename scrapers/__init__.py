@@ -8,9 +8,12 @@ from .usajobs import scrape_usajobs
 from .themuse import scrape_themuse
 from .google_jobs import scrape_google_jobs
 from .handshake import scrape_handshake
+from .higheredjobs import scrape_higheredjobs
+from .insidehighered import scrape_insidehighered
 import inspect
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from config import ACADEMIC_TITLE_KEYWORDS
 
 # Short words that carry no meaning for role matching
 _STOPWORDS = {"and", "or", "the", "for", "of", "in", "at", "a", "an", "to", "by",
@@ -23,7 +26,7 @@ def _role_keywords(role: str) -> list[str]:
     return [w for w in words if len(w) >= 2 and w not in _STOPWORDS]
 
 
-def _title_matches_roles(title: str, roles: list[str]) -> bool:
+def _title_matches_roles(title: str, roles: list[str], vertical: str = "tech") -> bool:
     """
     Return True if the job title matches at least one target role.
 
@@ -32,10 +35,16 @@ def _title_matches_roles(title: str, roles: list[str]) -> bool:
     2. ≥60% of role keywords in title (handles word-order differences and abbreviations)
        e.g. role "ICU Registered Nurse" → keywords ["icu","registered","nurse"]
             title "Registered Nurse ICU" matches on all 3 keywords
+
+    Academic mode: any generic faculty keyword (professor/adjunct/lecturer/…)
+    also counts as a match, so discipline-specific target roles don't drop
+    legitimate faculty titles.
     """
     if not roles:
         return True
     t = title.lower()
+    if vertical == "academic" and any(kw in t for kw in ACADEMIC_TITLE_KEYWORDS):
+        return True
     for role in roles:
         if role.lower() in t:
             return True
@@ -59,22 +68,31 @@ def _wants_remote(locations: list[str] | None) -> bool:
 
 
 def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
-               locations: list[str] | None = None) -> list[dict]:
+               locations: list[str] | None = None,
+               vertical: str = "tech") -> list[dict]:
     results = {}
 
     include_remote = _wants_remote(locations)
 
-    sources = [
-        ("LinkedIn",         scrape_linkedin),
-        ("Google Jobs",      scrape_google_jobs),
-        ("RemoteOK",         scrape_remoteok),
-        ("Remotive",         scrape_remotive),
-        ("We Work Remotely", scrape_weworkremotely),
-        ("Jobicy",           scrape_jobicy),
-        ("Adzuna",           scrape_adzuna),
-        ("USAJobs",          scrape_usajobs),
-        ("The Muse",         scrape_themuse),
-    ]
+    if vertical == "academic":
+        # Higher-ed faculty vertical: academic boards only. Remote-only tech
+        # boards and the generic tech sources don't carry faculty postings.
+        sources = [
+            ("HigherEdJobs",     scrape_higheredjobs),
+            ("Inside Higher Ed", scrape_insidehighered),
+        ]
+    else:
+        sources = [
+            ("LinkedIn",         scrape_linkedin),
+            ("Google Jobs",      scrape_google_jobs),
+            ("RemoteOK",         scrape_remoteok),
+            ("Remotive",         scrape_remotive),
+            ("We Work Remotely", scrape_weworkremotely),
+            ("Jobicy",           scrape_jobicy),
+            ("Adzuna",           scrape_adzuna),
+            ("USAJobs",          scrape_usajobs),
+            ("The Muse",         scrape_themuse),
+        ]
 
     # Skip remote-only boards when user explicitly wants onsite/hybrid cities only
     if not include_remote:
@@ -158,7 +176,7 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
     # ── Strict role enforcement (safety net) ─────────────────────
     if target_roles:
         before = len(unique)
-        unique = [j for j in unique if _title_matches_roles(j.get("title", ""), target_roles)]
+        unique = [j for j in unique if _title_matches_roles(j.get("title", ""), target_roles, vertical=vertical)]
         removed = before - len(unique)
         if removed:
             print(f"   🎯 Role filter removed {removed} off-target jobs")
