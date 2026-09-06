@@ -14,6 +14,46 @@ def get_client():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
+def supabase_project_ref() -> str:
+    """The project ref from SUPABASE_URL (the '<ref>' in https://<ref>.supabase.co).
+    This is how you tell WHICH Supabase project the app is actually talking to —
+    handy when an account has several projects."""
+    url = (SUPABASE_URL or "").strip()
+    if not url:
+        return "(SUPABASE_URL not set)"
+    host = url.split("://", 1)[-1].split("/", 1)[0]
+    return host.split(".", 1)[0] or host
+
+
+def session_columns_status() -> dict:
+    """Probe the connected project for user_sessions and the academic-vertical
+    columns. Returns {project_ref, has_user_sessions, has_vertical, has_schedule_pref}.
+
+    NOTE: adding the columns cannot be automated with the anon key — PostgREST
+    (the Supabase REST layer) does not run DDL (ALTER TABLE). So the app is
+    written to work without the columns (the faculty choice just won't persist
+    across refreshes); this helper tells you whether — and where — to add them."""
+    status = {
+        "project_ref": supabase_project_ref(),
+        "has_user_sessions": False,
+        "has_vertical": False,
+        "has_schedule_pref": False,
+    }
+    sb = get_client()
+    try:
+        sb.table("user_sessions").select("id").limit(1).execute()
+        status["has_user_sessions"] = True
+    except Exception:
+        return status  # table missing — nothing else to probe
+    for col in ("vertical", "schedule_pref"):
+        try:
+            sb.table("user_sessions").select(col).limit(1).execute()
+            status[f"has_{col}"] = True
+        except Exception:
+            pass
+    return status
+
+
 def _secret(name: str) -> str | None:
     import os
     val = os.getenv(name)

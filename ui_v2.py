@@ -693,6 +693,15 @@ def _try_restore_session():
         return  # already ran this run
     st.session_state["_session_restored"] = True
 
+    # Restore the vertical + teaching schedule straight from the URL — this
+    # works with zero database columns (survives refresh/bookmark like ?uid=).
+    _q_vertical = st.query_params.get("vertical")
+    if _q_vertical and not st.session_state.get("vertical"):
+        st.session_state["vertical"] = _q_vertical
+    _q_sched = st.query_params.get("sched")
+    if _q_sched and not st.session_state.get("schedule_pref"):
+        st.session_state["schedule_pref"] = _q_sched
+
     uid = st.query_params.get("uid")
     if not uid:
         return
@@ -1594,6 +1603,32 @@ if page == "Setup":
         _schedule_pref = ", ".join(_sched_selected)
         st.session_state["schedule_pref"] = _schedule_pref
 
+    # ── Database connection diagnostic ───────────────────────────
+    # Answers "which Supabase am I connected to?" and, when the academic
+    # columns are missing, shows the exact SQL to run in THAT project.
+    with st.expander("🔌 Database connection", expanded=False):
+        try:
+            from tracker import session_columns_status
+            _st = session_columns_status()
+            st.caption(f"Connected Supabase project: **`{_st['project_ref']}`**  "
+                       f"(run any migration in *this* project's SQL editor).")
+            if not _st["has_user_sessions"]:
+                st.warning("`user_sessions` table not found in this project — you may be "
+                           "pointed at the wrong Supabase project.")
+            elif _st["has_vertical"] and _st["has_schedule_pref"]:
+                st.success("Faculty-mode columns present — your vertical & schedule persist across refreshes.")
+            else:
+                st.info("Faculty mode works now, but to make it persist across refreshes, "
+                        "run this once in the SQL editor of the project above:")
+                st.code(
+                    "alter table user_sessions add column if not exists vertical text default 'tech';\n"
+                    "alter table user_sessions add column if not exists schedule_pref text;",
+                    language="sql",
+                )
+                st.caption("(Can't be automated — the anon key can't run ALTER TABLE.)")
+        except Exception as _e:
+            st.caption(f"Could not check database connection: {_e}")
+
     # ── Resume input: upload or paste ────────────────────────────
     st.markdown('<div class="section-label">Your Resume</div>', unsafe_allow_html=True)
     tab_upload, tab_paste = st.tabs(["Upload File", "Paste Text"])
@@ -1833,6 +1868,13 @@ if page == "Setup":
 
             # Persist to Supabase — use auth user_id as key so resume is tied to account
             uid = _USER_ID or st.session_state.get("session_uid") or new_uid()
+            # Persist vertical + schedule in the URL so faculty mode survives a
+            # refresh/bookmark even when the DB columns aren't present.
+            st.query_params["vertical"] = _selected_vertical
+            if _schedule_pref:
+                st.query_params["sched"] = _schedule_pref
+            elif "sched" in st.query_params:
+                del st.query_params["sched"]
             try:
                 save_session(uid, clean_text, roles, preferred_locations=locs,
                              vertical=_selected_vertical, schedule_pref=_schedule_pref)
