@@ -22,6 +22,9 @@ from ._academic import entry_to_job, is_excluded, matches_roles
 
 _MAX_QUERIES = 4
 
+# Present a browser-like User-Agent — some feeds serve empty to feedparser's default.
+_UA = "Mozilla/5.0 (compatible; JobPalBot/1.0; +https://jobpal.streamlit.app)"
+
 
 def _queries(target_roles: list[str] | None) -> list[str]:
     roles = target_roles or ACADEMIC_ROLES
@@ -45,7 +48,7 @@ def scrape_insidehighered(target_roles: list[str] = None,
     for query in _queries(target_roles):
         feed_url = INSIDEHIGHERED_FEED_TEMPLATE.format(query=quote_plus(query))
         try:
-            feed = feedparser.parse(feed_url)
+            feed = feedparser.parse(feed_url, agent=_UA)
             for entry in feed.entries:
                 job = entry_to_job(entry, source="insidehighered")
                 if job is None:

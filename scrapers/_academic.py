@@ -93,14 +93,20 @@ def entry_to_job(entry: dict, source: str) -> dict | None:
     if not url:
         return None
 
-    title = (entry.get("title", "") or "").strip()
+    raw_title = (entry.get("title", "") or "").strip()
     summary = entry.get("summary", "") or entry.get("description", "") or ""
     # Strip HTML tags feedparser may leave in the summary.
     desc = re.sub(r"<[^>]+>", " ", summary)
     desc = re.sub(r"\s+", " ", desc).strip()
 
-    # Institution: RSS <author> is most reliable; some feeds use dc:publisher.
+    # Institution: prefer explicit RSS fields; fall back to "Institution: Title"
+    # pattern that Inside Higher Ed uses in its title field.
     company = (entry.get("author", "") or entry.get("publisher", "") or "").strip()
+    if ":" in raw_title and not company:
+        company, _, raw_title = raw_title.partition(":")
+        company = company.strip()
+        raw_title = raw_title.strip()
+    title = raw_title
 
     # Location: feeds vary; try common fields, else leave blank.
     location = (entry.get("location", "") or "").strip()

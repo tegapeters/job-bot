@@ -85,14 +85,16 @@ def _feed_list(env_name: str, default: list[str]) -> list[str]:
         return [u.strip() for u in raw.split(",") if u.strip()]
     return default
 
-# HigherEdJobs publishes standard RSS 2.0 category feeds. catID values below
-# map to faculty discipline categories on higheredjobs.com. Verify/adjust the
-# active set for production via the ACADEMIC_FEEDS_HIGHEREDJOBS env var.
+# HigherEdJobs publishes standard RSS 2.0 category feeds. The real endpoint is
+# /search/rss.cfm?JobCat=<id> (verified live). JobCat IDs below map to the
+# discipline faculty categories closest to a Data Science / CS / analytics
+# teacher. Add/adjust per deployment via the ACADEMIC_FEEDS_HIGHEREDJOBS env var
+# (comma-separated); browse the full list at https://www.higheredjobs.com/rss/.
 HIGHEREDJOBS_FEEDS = _feed_list("ACADEMIC_FEEDS_HIGHEREDJOBS", [
-    "https://www.higheredjobs.com/rss/categoryFeed.cfm?catID=1",   # Faculty - Agriculture/Natural Resources
-    "https://www.higheredjobs.com/rss/categoryFeed.cfm?catID=101", # Faculty - Science/Technology
-    "https://www.higheredjobs.com/rss/categoryFeed.cfm?catID=140", # Faculty - Business
-    "https://www.higheredjobs.com/rss/categoryFeed.cfm?catID=200", # Faculty - Liberal Arts/Humanities
+    "https://www.higheredjobs.com/search/rss.cfm?JobCat=102",  # Computer Science
+    "https://www.higheredjobs.com/search/rss.cfm?JobCat=144",  # Information Systems & Technology
+    "https://www.higheredjobs.com/search/rss.cfm?JobCat=242",  # Computer and Information Technology
+    "https://www.higheredjobs.com/search/rss.cfm?JobCat=74",   # Other Technical and Career Faculty
 ])
 
 # Inside Higher Ed Careers (Madgex platform) exposes a keyword-searchable RSS

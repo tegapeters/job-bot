@@ -77,8 +77,9 @@ def scrape_all(target_roles: list[str] = None, min_salary: int = 0,
     if vertical == "academic":
         # Higher-ed faculty vertical: academic boards only. Remote-only tech
         # boards and the generic tech sources don't carry faculty postings.
+        # HigherEdJobs RSS is blocked by Incapsula WAF — removed until a
+        # workaround (e.g. paid API or proxy) is available.
         sources = [
-            ("HigherEdJobs",     scrape_higheredjobs),
             ("Inside Higher Ed", scrape_insidehighered),
         ]
     else:
