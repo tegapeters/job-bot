@@ -1,0 +1,40 @@
+name: Daily job scrape
+
+on:
+  schedule:
+    - cron: "0 12 * * 1-5"   # 8am ET (Mon–Fri); 12pm UTC (adjust to 11 in summer)
+  workflow_dispatch:           # manual trigger from GitHub Actions UI
+
+jobs:
+  scrape:
+    name: Scrape + score + save
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL:      ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_KEY:          ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ANTHROPIC_API_KEY:             ${{ secrets.ANTHROPIC_API_KEY }}
+      ADZUNA_APP_ID:                 ${{ secrets.ADZUNA_APP_ID }}
+      ADZUNA_APP_KEY:                ${{ secrets.ADZUNA_APP_KEY }}
+      USAJOBS_API_KEY:               ${{ secrets.USAJOBS_API_KEY }}
+      USAJOBS_EMAIL:                 ${{ secrets.USAJOBS_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: python -m playwright install chromium --with-deps
+        continue-on-error: true   # non-fatal if auto-apply is disabled
+
+      - name: Run pipeline
+        run: python main.py scrape --backend hybrid
