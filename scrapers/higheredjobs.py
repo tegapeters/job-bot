@@ -17,6 +17,10 @@ import feedparser
 from config import HIGHEREDJOBS_FEEDS
 from ._academic import entry_to_job, is_excluded, matches_roles
 
+# Some job-board feeds return empty/blocked responses to feedparser's default
+# User-Agent; present a browser-like UA so they serve the real RSS.
+_UA = "Mozilla/5.0 (compatible; JobPalBot/1.0; +https://jobpal.streamlit.app)"
+
 
 def scrape_higheredjobs(target_roles: list[str] = None,
                         locations: list[str] = None) -> list[dict]:
@@ -25,7 +29,7 @@ def scrape_higheredjobs(target_roles: list[str] = None,
 
     for feed_url in HIGHEREDJOBS_FEEDS:
         try:
-            feed = feedparser.parse(feed_url)
+            feed = feedparser.parse(feed_url, agent=_UA)
             for entry in feed.entries:
                 job = entry_to_job(entry, source="higheredjobs")
                 if job is None:
