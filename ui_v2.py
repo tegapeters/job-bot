@@ -36,12 +36,79 @@ st.set_page_config(
 st.markdown("""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=JetBrains+Mono:wght@400;500;600&display=swap');
-  /* ── Base ── */
-  html, body, [data-testid="stApp"] { background: #0A0A0B; }
-  [data-testid="stSidebar"] {
-    background: #0f0f10;
-    border-right: 1px solid #1f1f22;
+
+  /* ── Theme tokens — dark default ── */
+  :root {
+    --jp-bg:      #0A0A0B;
+    --jp-surface: #131315;
+    --jp-card:    #1A1A1E;
+    --jp-border:  #1F1F22;
+    --jp-fg:      #F5F4EE;
+    --jp-dim:     #8B8B85;
+    --jp-dimmer:  #4A4A45;
+    --jp-accent:  #D4FF3A;
+    --jp-ok:      #D4FF3A;
+    --jp-warn:    #FF6B6B;
+    --jp-shadow:  rgba(212,255,58,0.08);
+    --jp-shadow2: rgba(212,255,58,0.35);
+    --jp-tag-bg:  #1A1F0A;
+    --jp-tag-fg:  #D4FF3A;
+    --jp-tag-br:  #2A3510;
   }
+
+  /* ── Light override ── */
+  [data-theme="light"] {
+    --jp-bg:      #F7F5F0;
+    --jp-surface: #FFFFFF;
+    --jp-card:    #FAFAF7;
+    --jp-border:  #E5E0D8;
+    --jp-fg:      #1A1A1A;
+    --jp-dim:     #5C5C5C;
+    --jp-dimmer:  #A0A0A0;
+    --jp-accent:  #9A6F2E;
+    --jp-ok:      #2D7A2D;
+    --jp-warn:    #C03030;
+    --jp-shadow:  rgba(154,111,46,0.10);
+    --jp-shadow2: rgba(154,111,46,0.40);
+    --jp-tag-bg:  #F0EBE2;
+    --jp-tag-fg:  #5C3D10;
+    --jp-tag-br:  #D0C0A0;
+  }
+
+  /* ── Streamlit base light overrides ── */
+  [data-theme="light"] html,
+  [data-theme="light"] body,
+  [data-theme="light"] [data-testid="stApp"]          { background: var(--jp-bg) !important; color: var(--jp-fg) !important; }
+  [data-theme="light"] [data-testid="stSidebar"],
+  [data-theme="light"] [data-testid="stSidebar"] > div { background: var(--jp-surface) !important; }
+  [data-theme="light"] .stMarkdown,
+  [data-theme="light"] .stMarkdown p,
+  [data-theme="light"] .stCaption,
+  [data-theme="light"] label                           { color: var(--jp-fg) !important; }
+  [data-theme="light"] .stTextInput input,
+  [data-theme="light"] .stTextArea textarea            { background: var(--jp-surface) !important; color: var(--jp-fg) !important; border-color: var(--jp-border) !important; }
+  [data-theme="light"] [data-baseweb="select"] > div  { background: var(--jp-surface) !important; color: var(--jp-fg) !important; border-color: var(--jp-border) !important; }
+  [data-theme="light"] [data-testid="stExpander"]      { background: var(--jp-surface) !important; border-color: var(--jp-border) !important; }
+  [data-theme="light"] [data-testid="stExpander"] summary { color: var(--jp-fg) !important; }
+  [data-theme="light"] [data-testid="stTabs"] [data-baseweb="tab-list"] { border-bottom-color: var(--jp-border) !important; }
+  [data-theme="light"] [data-testid="stTabs"] button  { color: var(--jp-dim) !important; }
+  [data-theme="light"] [data-testid="stTabs"] button[aria-selected="true"] { color: var(--jp-accent) !important; border-bottom-color: var(--jp-accent) !important; }
+  [data-theme="light"] div.stButton > button[kind="secondary"],
+  [data-theme="light"] div.stButton > button:not([kind="primary"]),
+  [data-theme="light"] [data-testid="baseButton-secondary"] { background: var(--jp-surface) !important; color: var(--jp-fg) !important; border-color: var(--jp-border) !important; }
+  [data-theme="light"] div.stButton > button[kind="secondary"]:hover,
+  [data-theme="light"] div.stButton > button:not([kind="primary"]):hover { background: var(--jp-bg) !important; border-color: var(--jp-accent) !important; }
+  [data-theme="light"] div.stButton > button[kind="primary"],
+  [data-theme="light"] [data-testid="baseButton-primary"] { background: var(--jp-accent) !important; color: #1A1A1A !important; border-color: var(--jp-accent) !important; }
+  [data-theme="light"] span[data-baseweb="tag"],
+  [data-theme="light"] span[data-baseweb="tag"][style] { background: var(--jp-tag-bg) !important; background-color: var(--jp-tag-bg) !important; color: var(--jp-tag-fg) !important; border: 1px solid var(--jp-tag-br) !important; }
+  [data-theme="light"] span[data-baseweb="tag"] span   { color: var(--jp-tag-fg) !important; }
+  [data-theme="light"] span[data-baseweb="tag"] svg,
+  [data-theme="light"] span[data-baseweb="tag"] button { color: var(--jp-accent) !important; fill: var(--jp-accent) !important; }
+
+  /* ── Base ── */
+  html, body, [data-testid="stApp"] { background: var(--jp-bg); }
+  [data-testid="stSidebar"] { background: var(--jp-surface); border-right: 1px solid var(--jp-border); }
   [data-testid="stSidebar"] > div { padding-top: 0 !important; }
 
   /* ── Logo ── */
@@ -49,19 +116,19 @@ st.markdown("""
     font-family: 'JetBrains Mono', monospace;
     font-size: 20px;
     font-weight: 500;
-    color: #F5F4EE;
+    color: var(--jp-fg);
     letter-spacing: -0.01em;
     padding: 28px 20px 0;
   }
-  .tt-logo .bracket, .tt-logo .dot { color: #D4FF3A; }
+  .tt-logo .bracket, .tt-logo .dot { color: var(--jp-accent); }
   .tt-product {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     letter-spacing: 0.25em;
-    color: #4A4A45;
+    color: var(--jp-dimmer);
     text-transform: uppercase;
     padding: 6px 20px 20px;
-    border-bottom: 1px solid #1f1f22;
+    border-bottom: 1px solid var(--jp-border);
     margin-bottom: 12px;
   }
 
@@ -71,14 +138,14 @@ st.markdown("""
     align-items: center;
     gap: 16px;
     padding-bottom: 20px;
-    border-bottom: 1px solid #1f1f22;
+    border-bottom: 1px solid var(--jp-border);
     margin-bottom: 28px;
   }
   .page-header .eyebrow {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     letter-spacing: 0.25em;
-    color: #D4FF3A;
+    color: var(--jp-accent);
     text-transform: uppercase;
     margin-bottom: 4px;
   }
@@ -86,52 +153,36 @@ st.markdown("""
     font-family: 'Fraunces', serif !important;
     font-size: 40px !important;
     font-weight: 300 !important;
-    color: #F5F4EE !important;
+    color: var(--jp-fg) !important;
     letter-spacing: -0.03em !important;
     line-height: 1 !important;
     margin: 0 !important;
     padding: 0 !important;
   }
-  .page-header h1 em {
-    font-style: italic;
-    color: #D4FF3A;
-  }
+  .page-header h1 em { font-style: italic; color: var(--jp-accent); }
 
   /* ── Metric cards ── */
   .metric-card {
-    background: #131315;
-    border: 1px solid #1f1f22;
+    background: var(--jp-surface);
+    border: 1px solid var(--jp-border);
     border-radius: 8px;
     padding: 20px 24px;
     margin-bottom: 12px;
+    transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
   }
-  .metric-card .label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: #4A4A45;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-  }
-  .metric-card .value {
-    font-family: 'Fraunces', serif;
-    font-size: 36px;
-    font-weight: 400;
-    color: #F5F4EE;
-    line-height: 1;
-  }
-  .metric-card .sub {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: #4A4A45;
-    margin-top: 6px;
-  }
-  .metric-card.accent { border-left: 3px solid #D4FF3A; }
+  .metric-card:hover { transform: translateY(-3px); box-shadow: 0 8px 28px var(--jp-shadow); border-color: var(--jp-shadow2); }
+  .metric-card .label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--jp-dimmer); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 8px; }
+  .metric-card .value { font-family: 'Fraunces', serif; font-size: 36px; font-weight: 400; color: var(--jp-fg); line-height: 1; }
+  .metric-card .sub   { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--jp-dimmer); margin-top: 6px; }
+  .metric-card.accent { border-left: 3px solid var(--jp-accent); }
 
   /* ── Score / status badges ── */
-  .score-high { color: #D4FF3A; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
-  .score-mid  { color: #f5c518; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
-  .score-low  { color: #ff6b6b; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+  .score-high { color: #A0F060; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+  .score-mid  { color: #F5C518; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+  .score-low  { color: #FF6B6B; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+  [data-theme="light"] .score-high { color: #2D7A2D; }
+  [data-theme="light"] .score-mid  { color: #8A6000; }
+  [data-theme="light"] .score-low  { color: #C03030; }
   .tag {
     display: inline-block;
     font-family: 'JetBrains Mono', monospace;
@@ -142,24 +193,31 @@ st.markdown("""
     text-transform: uppercase;
     margin-right: 4px;
   }
-  .tag-new                { background: #1a1f0a; color: #D4FF3A; border: 1px solid #2a3510; }
-  .tag-applied            { background: #0a1a1f; color: #3ad4ff; border: 1px solid #102a35; }
-  .tag-interview          { background: #1a0f1a; color: #d43aff; border: 1px solid #2a1035; }
-  .tag-rejected           { background: #1f0a0a; color: #ff3a3a; border: 1px solid #350f0f; }
-  .tag-skipped            { background: #1a1a1a; color: #666; border: 1px solid #333; }
-  .tag-application_closed { background: #1a1208; color: #ff9a3a; border: 1px solid #352010; }
-  .tag-no_response        { background: #181818; color: #888; border: 1px solid #2a2a2a; }
+  .tag-new                { background: #1A2808; color: #A0E060; border: 1px solid #2A4010; }
+  .tag-applied            { background: #081828; color: #60C0E0; border: 1px solid #103040; }
+  .tag-interview          { background: #180828; color: #C060E0; border: 1px solid #301050; }
+  .tag-rejected           { background: #280808; color: #E06060; border: 1px solid #401010; }
+  .tag-skipped            { background: #1A1A1A; color: #888;    border: 1px solid #333; }
+  .tag-application_closed { background: #281808; color: #E09040; border: 1px solid #402010; }
+  .tag-no_response        { background: #1A1A1A; color: #777;    border: 1px solid #333; }
+  [data-theme="light"] .tag-new                { background: #EEFAE0; color: #2D6B0A; border-color: #B8DFA0; }
+  [data-theme="light"] .tag-applied            { background: #E0F2FA; color: #0A4A6B; border-color: #A0CFDF; }
+  [data-theme="light"] .tag-interview          { background: #F0E8FA; color: #5A0A7A; border-color: #CFA8DF; }
+  [data-theme="light"] .tag-rejected           { background: #FAE8E8; color: #7A0A0A; border-color: #DFA8A8; }
+  [data-theme="light"] .tag-skipped            { background: #F2F2F2; color: #5A5A5A; border-color: #D0D0D0; }
+  [data-theme="light"] .tag-application_closed { background: #FAF2E0; color: #7A4A0A; border-color: #DFCA90; }
+  [data-theme="light"] .tag-no_response        { background: #F5F5F5; color: #7A7A7A; border-color: #D8D8D8; }
 
   /* ── Cover letter block ── */
   .cover-letter {
-    background: #131315;
-    border: 1px solid #1f1f22;
-    border-left: 3px solid #D4FF3A;
+    background: var(--jp-card);
+    border: 1px solid var(--jp-border);
+    border-left: 3px solid var(--jp-accent);
     border-radius: 4px;
     padding: 20px 24px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    color: #c8c8c0;
+    color: var(--jp-dim);
     white-space: pre-wrap;
     line-height: 1.8;
   }
@@ -169,34 +227,24 @@ st.markdown("""
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     letter-spacing: 0.2em;
-    color: #4A4A45;
+    color: var(--jp-dimmer);
     text-transform: uppercase;
     margin-bottom: 16px;
     padding-bottom: 10px;
-    border-bottom: 1px solid #1f1f22;
+    border-bottom: 1px solid var(--jp-border);
   }
 
   /* ── Pipeline status box ── */
   .pipeline-card {
-    background: #131315;
-    border: 1px solid #1f1f22;
+    background: var(--jp-surface);
+    border: 1px solid var(--jp-border);
     border-radius: 8px;
     padding: 24px;
+    transition: transform 0.22s ease, box-shadow 0.22s ease;
   }
-  .pipeline-card h4 {
-    font-family: 'Fraunces', serif !important;
-    font-size: 22px !important;
-    font-weight: 400 !important;
-    color: #F5F4EE !important;
-    margin: 0 0 8px 0 !important;
-  }
-  .pipeline-card p {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: #8B8B85;
-    line-height: 1.7;
-    margin: 0 !important;
-  }
+  .pipeline-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px var(--jp-shadow); }
+  .pipeline-card h4 { font-family: 'Fraunces', serif !important; font-size: 22px !important; font-weight: 400 !important; color: var(--jp-fg) !important; margin: 0 0 8px 0 !important; }
+  .pipeline-card p  { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--jp-dim); line-height: 1.7; margin: 0 !important; }
 
   /* ── All buttons — base reset ── */
   div.stButton > button,
@@ -211,238 +259,82 @@ st.markdown("""
     border-radius: 3px !important;
     transition: background 0.15s, border-color 0.15s !important;
   }
-
-  /* ── Primary buttons (white) ── */
   div.stButton > button[kind="primary"],
   div[data-testid="stButton"] > button[kind="primary"],
   div[data-testid="stFormSubmitButton"] > button[kind="primary"],
-  [data-testid="baseButton-primary"] {
-    background: #F5F4EE !important;
-    color: #0A0A0B !important;
-    border: 1px solid #F5F4EE !important;
-    font-weight: 600 !important;
-  }
+  [data-testid="baseButton-primary"] { background: #9A6F2E !important; color: #FFFFFF !important; border: 1px solid #9A6F2E !important; font-weight: 600 !important; }
   div.stButton > button[kind="primary"]:hover,
-  div[data-testid="stButton"] > button[kind="primary"]:hover,
-  [data-testid="baseButton-primary"]:hover {
-    background: #ffffff !important;
-    border-color: #ffffff !important;
-  }
-
-  /* ── Secondary / default buttons (dark grey) ── */
+  [data-testid="baseButton-primary"]:hover { background: #7A5520 !important; border-color: #7A5520 !important; }
   div.stButton > button[kind="secondary"],
   div.stButton > button:not([kind="primary"]),
   div[data-testid="stButton"] > button[kind="secondary"],
   div[data-testid="stDownloadButton"] > button,
-  [data-testid="baseButton-secondary"] {
-    background: #1f1f22 !important;
-    color: #c8c8c0 !important;
-    border: 1px solid #2e2e32 !important;
-    font-weight: 500 !important;
-  }
+  [data-testid="baseButton-secondary"] { background: var(--jp-surface) !important; color: var(--jp-fg) !important; border: 1px solid var(--jp-border) !important; font-weight: 500 !important; }
   div.stButton > button[kind="secondary"]:hover,
   div.stButton > button:not([kind="primary"]):hover,
-  div[data-testid="stButton"] > button[kind="secondary"]:hover,
-  div[data-testid="stDownloadButton"] > button:hover,
-  [data-testid="baseButton-secondary"]:hover {
-    background: #2a2a2e !important;
-    border-color: #3e3e44 !important;
-    color: #F5F4EE !important;
-  }
+  [data-testid="baseButton-secondary"]:hover { background: var(--jp-bg) !important; border-color: var(--jp-accent) !important; }
 
   /* ── Multiselect tags ── */
-  /* Target all variants including those with Streamlit-injected inline style= */
   span[data-baseweb="tag"],
   span[data-baseweb="tag"][style],
   [data-testid="stMultiSelect"] span[data-baseweb="tag"],
-  [data-testid="stMultiSelect"] span[data-baseweb="tag"][style],
-  [data-baseweb="select"] span[data-baseweb="tag"],
-  div[data-baseweb="select"] span[data-baseweb="tag"] {
-    background: #2a2a2e !important;
-    background-color: #2a2a2e !important;
-    color: #c8c8c0 !important;
-    border: 1px solid #3e3e44 !important;
-    border-radius: 4px !important;
-  }
+  [data-baseweb="select"] span[data-baseweb="tag"] { background: var(--jp-tag-bg) !important; background-color: var(--jp-tag-bg) !important; color: var(--jp-tag-fg) !important; border: 1px solid var(--jp-tag-br) !important; border-radius: 4px !important; }
   span[data-baseweb="tag"] span,
-  span[data-baseweb="tag"] > span,
-  span[data-baseweb="tag"][style] span,
-  [data-testid="stMultiSelect"] span[data-baseweb="tag"] span,
-  [data-testid="stMultiSelect"] span[data-baseweb="tag"] > span {
-    color: #c8c8c0 !important;
-    background: transparent !important;
-    background-color: transparent !important;
-  }
-  /* X button inside tags */
+  [data-testid="stMultiSelect"] span[data-baseweb="tag"] span { color: var(--jp-tag-fg) !important; background: transparent !important; background-color: transparent !important; }
   span[data-baseweb="tag"] [role="presentation"],
   span[data-baseweb="tag"] button,
-  span[data-baseweb="tag"] svg {
-    color: #888 !important;
-    fill: #888 !important;
-    background: transparent !important;
-    background-color: transparent !important;
-  }
+  span[data-baseweb="tag"] svg { color: var(--jp-accent) !important; fill: var(--jp-accent) !important; background: transparent !important; }
 
-  /* ── Slider thumb + track ── */
-  [data-testid="stSlider"] [role="slider"] {
-    background: #c8c8c0 !important;
-    border-color: #c8c8c0 !important;
-  }
-  [data-testid="stSlider"] [data-testid="stSliderThumbValue"] {
-    color: #c8c8c0 !important;
-  }
+  /* ── Slider ── */
+  [data-testid="stSlider"] [role="slider"] { background: var(--jp-accent) !important; border-color: var(--jp-accent) !important; }
+  [data-testid="stSlider"] [data-testid="stSliderThumbValue"] { color: var(--jp-dim) !important; }
 
   /* ── Footer ── */
-  .tt-footer {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: #4A4A45;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    padding-top: 8px;
-    border-top: 1px solid #1f1f22;
-    margin-top: 4px;
-  }
+  .tt-footer { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--jp-dimmer); letter-spacing: 0.15em; text-transform: uppercase; padding-top: 8px; border-top: 1px solid var(--jp-border); margin-top: 4px; }
 
   /* ══════════════════════════════════════════════════════════════
      MOBILE  (≤ 768px)
      ══════════════════════════════════════════════════════════════ */
   @media (max-width: 768px) {
-
-    /* ── Main content padding ── */
-    .main .block-container {
-      padding-left: 16px !important;
-      padding-right: 16px !important;
-      padding-top: 16px !important;
-    }
-
-    /* ── Stack all Streamlit columns ── */
-    [data-testid="stHorizontalBlock"] {
-      flex-wrap: wrap !important;
-      gap: 0 !important;
-    }
-    [data-testid="column"] {
-      min-width: 100% !important;
-      width: 100% !important;
-      flex: 1 1 100% !important;
-    }
-
-    /* ── Page header ── */
+    .main .block-container { padding-left: 16px !important; padding-right: 16px !important; padding-top: 16px !important; }
+    [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: 0 !important; }
+    [data-testid="column"] { min-width: 100% !important; width: 100% !important; flex: 1 1 100% !important; }
     .page-header { margin-bottom: 20px; padding-bottom: 16px; }
-    .page-header h1 {
-      font-size: 28px !important;
-      letter-spacing: -0.02em !important;
-    }
-
-    /* ── Auth / landing hero ── */
-    div[style*="max-width:440px"],
-    div[style*="max-width: 440px"] {
-      margin-top: 32px !important;
-    }
-    div[style*="font-size:42px"],
-    div[style*="font-size: 42px"] {
-      font-size: 30px !important;
-    }
-
-    /* ── Metric cards: smaller value, tighter padding ── */
+    .page-header h1 { font-size: 28px !important; letter-spacing: -0.02em !important; }
+    div[style*="max-width:440px"], div[style*="max-width: 440px"] { margin-top: 32px !important; }
+    div[style*="font-size:42px"], div[style*="font-size: 42px"] { font-size: 30px !important; }
     .metric-card { padding: 14px 16px; }
     .metric-card .value { font-size: 26px; }
-
-    /* ── Buttons: bigger tap targets ── */
-    div.stButton > button,
-    div[data-testid="stButton"] > button,
+    div.stButton > button, div[data-testid="stButton"] > button,
     div[data-testid="stDownloadButton"] > button,
-    div[data-testid="stFormSubmitButton"] > button {
-      min-height: 48px !important;
-      font-size: 13px !important;
-    }
-
-    /* ── Cover letter: smaller mono text ── */
-    .cover-letter {
-      font-size: 11px !important;
-      padding: 14px 16px !important;
-      line-height: 1.7 !important;
-    }
-
-    /* ── Pipeline card ── */
+    div[data-testid="stFormSubmitButton"] > button { min-height: 48px !important; font-size: 13px !important; }
+    .cover-letter { font-size: 11px !important; padding: 14px 16px !important; line-height: 1.7 !important; }
     .pipeline-card { padding: 16px; }
     .pipeline-card h4 { font-size: 18px !important; }
-
-    /* ── Section label spacing ── */
     .section-label { margin-bottom: 12px; }
-
-    /* ── Tabs: smaller text ── */
-    [data-testid="stTabs"] button {
-      font-size: 11px !important;
-      padding: 6px 10px !important;
-    }
-
-    /* ── Expander header ── */
-    [data-testid="stExpander"] summary {
-      font-size: 13px !important;
-      padding: 10px 14px !important;
-    }
-
-    /* ── Sidebar logo on mobile ── */
+    [data-testid="stTabs"] button { font-size: 11px !important; padding: 6px 10px !important; }
+    [data-testid="stExpander"] summary { font-size: 13px !important; padding: 10px 14px !important; }
     .tt-logo { font-size: 17px !important; padding: 20px 16px 0 !important; }
     .tt-product { padding: 4px 16px 16px !important; }
-
-    /* ── Sliders: wider touch area ── */
-    [data-testid="stSlider"] [role="slider"] {
-      width: 22px !important;
-      height: 22px !important;
-    }
-
-    /* ── Dataframes: allow horizontal scroll ── */
-    [data-testid="stDataFrame"] {
-      overflow-x: auto !important;
-    }
-    [data-testid="stDataFrame"] > div {
-      min-width: 480px;
-    }
-
-    /* ── Sidebar toggle: larger tap target + accent colour ── */
-    [data-testid="collapsedControl"] {
-      width: 44px !important;
-      height: 44px !important;
-      background: #D4FF3A !important;
-      border-radius: 8px !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-    }
-    [data-testid="collapsedControl"] svg {
-      color: #0A0A08 !important;
-      fill: #0A0A08 !important;
-      width: 20px !important;
-      height: 20px !important;
-    }
+    [data-testid="stSlider"] [role="slider"] { width: 22px !important; height: 22px !important; }
+    [data-testid="stDataFrame"] { overflow-x: auto !important; }
+    [data-testid="stDataFrame"] > div { min-width: 480px; }
+    [data-testid="collapsedControl"] { width: 44px !important; height: 44px !important; background: var(--jp-accent) !important; border-radius: 8px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+    [data-testid="collapsedControl"] svg { color: #000 !important; fill: #000 !important; width: 20px !important; height: 20px !important; }
   }
 
-  /* ── Landscape phones (height ≤ 500px) ── */
   @media (max-height: 500px) and (max-width: 900px) {
-    div[style*="max-width:440px"],
-    div[style*="max-width: 440px"] {
-      margin-top: 8px !important;
-    }
-    div[style*="font-size:42px"],
-    div[style*="font-size: 42px"] {
-      font-size: 20px !important;
-      margin-bottom: 8px !important;
-      line-height: 1.2 !important;
-    }
-    div[style*="margin-bottom:10px"] {
-      margin-bottom: 4px !important;
-    }
+    div[style*="max-width:440px"], div[style*="max-width: 440px"] { margin-top: 8px !important; }
+    div[style*="font-size:42px"], div[style*="font-size: 42px"] { font-size: 20px !important; margin-bottom: 8px !important; line-height: 1.2 !important; }
+    div[style*="margin-bottom:10px"] { margin-bottom: 4px !important; }
   }
 
-  /* ── Hide Streamlit health status badge ── */
   [data-testid="stStatusWidget"] { display: none !important; }
 
-  /* ── Swipe card (Review Queue card mode) ── */
+  /* ── Swipe card ── */
   .swipe-card {
-    background: #131315;
-    border: 1px solid #1f1f22;
+    background: var(--jp-surface);
+    border: 1px solid var(--jp-border);
     border-radius: 12px;
     padding: 28px 28px 24px;
     margin: 0 auto 24px;
@@ -451,193 +343,78 @@ st.markdown("""
     touch-action: pan-y;
     user-select: none;
     -webkit-user-select: none;
+    transition: box-shadow 0.22s ease;
   }
-  .sc-progress-bar {
-    height: 3px;
-    background: #1f1f22;
-    border-radius: 2px;
-    margin-bottom: 20px;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .sc-progress-fill {
-    height: 100%;
-    background: #D4FF3A;
-    border-radius: 2px;
-    transition: width 0.3s ease;
-  }
-  .sc-counter {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: #4A4A45;
-    letter-spacing: 0.15em;
-    text-align: center;
-    margin-bottom: 20px;
-  }
-  .sc-score-badge {
-    font-family: 'Fraunces', serif;
-    font-size: 52px;
-    font-weight: 300;
-    line-height: 1;
-    margin-bottom: 4px;
-  }
-  .sc-score-badge.high { color: #D4FF3A; }
-  .sc-score-badge.mid  { color: #f5c518; }
-  .sc-score-badge.low  { color: #ff6b6b; }
-  .sc-score-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: #4A4A45;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    margin-bottom: 20px;
-  }
-  .sc-title {
-    font-family: 'Fraunces', serif;
-    font-size: 26px;
-    font-weight: 300;
-    color: #F5F4EE;
-    margin: 0 0 6px 0;
-    line-height: 1.2;
-  }
-  .sc-company {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: #8B8B85;
-    margin-bottom: 16px;
-  }
+  .swipe-card:hover { box-shadow: 0 8px 32px var(--jp-shadow); }
+  .sc-progress-bar { height: 3px; background: var(--jp-border); border-radius: 2px; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto; }
+  .sc-progress-fill { height: 100%; background: var(--jp-accent); border-radius: 2px; transition: width 0.3s ease; }
+  .sc-counter       { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--jp-dimmer); letter-spacing: 0.15em; text-align: center; margin-bottom: 20px; }
+  .sc-score-badge   { font-family: 'Fraunces', serif; font-size: 52px; font-weight: 300; line-height: 1; margin-bottom: 4px; }
+  .sc-score-badge.high { color: var(--jp-ok); }
+  .sc-score-badge.mid  { color: #F5C518; }
+  .sc-score-badge.low  { color: var(--jp-warn); }
+  [data-theme="light"] .sc-score-badge.mid { color: #8A6000; }
+  .sc-score-label   { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--jp-dimmer); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 20px; }
+  .sc-title         { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 300; color: var(--jp-fg); margin: 0 0 6px 0; line-height: 1.2; }
+  .sc-company       { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--jp-dim); margin-bottom: 16px; }
   .sc-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
-  .sc-tag {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    padding: 4px 10px;
-    border-radius: 3px;
-    text-transform: uppercase;
-  }
-  .sc-tag.remote { background: #1a1f0a; color: #D4FF3A; border: 1px solid #2a3510; }
-  .sc-tag.hybrid { background: #0a1a1f; color: #3ad4ff; border: 1px solid #102a35; }
-  .sc-tag.onsite { background: #1a1a1a; color: #8B8B85; border: 1px solid #2a2a2a; }
-  .sc-tag.salary { background: #131315; color: #8B8B85; border: 1px solid #2a2a2a; }
-  .sc-tag.days   { background: #131315; color: #8B8B85; border: 1px solid #2a2a2a; }
-  .sc-tag.days.warn { color: #f5c518; }
-  .sc-tag.days.stale { color: #ff6b6b; }
-  .sc-reason {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: #c8c8c0;
-    line-height: 1.7;
-    margin-bottom: 14px;
-    padding: 12px 14px;
-    background: #0d0d0f;
-    border-radius: 6px;
-    border-left: 2px solid #D4FF3A;
-  }
-  .sc-hint {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: #8B8B85;
-    margin-bottom: 14px;
-  }
-  .sc-link {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: #D4FF3A;
-    text-decoration: none;
-    letter-spacing: 0.08em;
-  }
+  .sc-tag  { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; padding: 4px 10px; border-radius: 3px; text-transform: uppercase; }
+  .sc-tag.remote { background: #EEFAE0; color: #2D6B0A; border: 1px solid #B8DFA0; }
+  .sc-tag.hybrid { background: #E0F2FA; color: #0A4A6B; border: 1px solid #A0CFDF; }
+  .sc-tag.onsite { background: var(--jp-card); color: var(--jp-dim); border: 1px solid var(--jp-border); }
+  .sc-tag.salary { background: var(--jp-card); color: var(--jp-dim); border: 1px solid var(--jp-border); }
+  .sc-tag.days   { background: var(--jp-card); color: var(--jp-dim); border: 1px solid var(--jp-border); }
+  .sc-tag.days.warn  { color: #8A6000; }
+  .sc-tag.days.stale { color: var(--jp-warn); }
+  .sc-tag.remote { background: #0A1F0A; color: #80D040; border: 1px solid #1A4010; }
+  .sc-tag.hybrid { background: #0A1020; color: #40A0D0; border: 1px solid #102040; }
+  [data-theme="light"] .sc-tag.remote { background: #EEFAE0; color: #2D6B0A; border-color: #B8DFA0; }
+  [data-theme="light"] .sc-tag.hybrid { background: #E0F2FA; color: #0A4A6B; border-color: #A0CFDF; }
+  [data-theme="light"] .sc-tag.days.warn { color: #8A6000; }
+  .sc-reason { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--jp-dim); line-height: 1.7; margin-bottom: 14px; padding: 12px 14px; background: var(--jp-bg); border-radius: 6px; border-left: 2px solid var(--jp-accent); }
+  .sc-hint   { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--jp-dimmer); margin-bottom: 14px; }
+  .sc-link   { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--jp-accent); text-decoration: none; letter-spacing: 0.08em; }
   .sc-link:hover { text-decoration: underline; }
-  .sc-gesture-hint {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: #2a2a2e;
-    text-align: center;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    margin-top: 14px;
-  }
-  .sc-swipe-indicator {
-    position: absolute;
-    top: 20px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    padding: 5px 12px;
-    border-radius: 4px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.05s;
-  }
-  .sc-swipe-indicator.skip-ind  { left: 20px;  color: #ff6b6b; border: 2px solid #ff6b6b; }
-  .sc-swipe-indicator.apply-ind { right: 20px; color: #D4FF3A; border: 2px solid #D4FF3A; }
+  .sc-gesture-hint { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--jp-border); text-align: center; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 14px; }
+  .sc-swipe-indicator { position: absolute; top: 20px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; padding: 5px 12px; border-radius: 4px; opacity: 0; pointer-events: none; transition: opacity 0.05s; }
+  .sc-swipe-indicator.skip-ind  { left: 20px;  color: var(--jp-warn); border: 2px solid var(--jp-warn); }
+  .sc-swipe-indicator.apply-ind { right: 20px; color: var(--jp-ok);   border: 2px solid var(--jp-ok); }
   @media (max-width: 768px) {
     .swipe-card { padding: 20px 18px 18px; border-radius: 10px; }
     .sc-title { font-size: 22px; }
     .sc-score-badge { font-size: 42px; }
   }
 
-  /* ── Funnel row (Dashboard) ── */
-  .funnel-row {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    background: #131315;
-    border: 1px solid #1f1f22;
-    border-radius: 8px;
-    padding: 24px 28px;
-    margin-bottom: 28px;
-    flex-wrap: wrap;
-  }
+  /* ── Funnel row ── */
+  .funnel-row { display: flex; align-items: center; gap: 0; background: var(--jp-surface); border: 1px solid var(--jp-border); border-radius: 8px; padding: 24px 28px; margin-bottom: 28px; flex-wrap: wrap; }
   .funnel-step { text-align: center; flex: 1; min-width: 80px; }
-  .funnel-step .fn { font-family: 'Fraunces', serif; font-size: 32px; font-weight: 400; color: #F5F4EE; line-height: 1; }
-  .funnel-step .fn.accent { color: #D4FF3A; }
-  .funnel-step .fl { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #4A4A45; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 6px; }
-  .funnel-arrow { font-family: 'JetBrains Mono', monospace; font-size: 16px; color: #2e2e32; padding: 0 12px; flex-shrink: 0; }
+  .funnel-step .fn { font-family: 'Fraunces', serif; font-size: 32px; font-weight: 400; color: var(--jp-fg); line-height: 1; }
+  .funnel-step .fn.accent { color: var(--jp-accent); }
+  .funnel-step .fl { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--jp-dimmer); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 6px; }
+  .funnel-arrow { font-family: 'JetBrains Mono', monospace; font-size: 16px; color: var(--jp-border); padding: 0 12px; flex-shrink: 0; }
 
-  /* ── Pre-flight checklist (Run Pipeline) ── */
-  .preflight {
-    background: #131315;
-    border: 1px solid #1f1f22;
-    border-radius: 8px;
-    padding: 20px 24px;
-    margin-bottom: 20px;
-  }
-  .preflight .pf-row {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: #8B8B85;
-    padding: 4px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .preflight .pf-row .ok  { color: #D4FF3A; }
-  .preflight .pf-row .warn { color: #ff6b6b; }
+  /* ── Pre-flight checklist ── */
+  .preflight { background: var(--jp-surface); border: 1px solid var(--jp-border); border-radius: 8px; padding: 20px 24px; margin-bottom: 20px; }
+  .preflight .pf-row { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--jp-dim); padding: 4px 0; display: flex; align-items: center; gap: 10px; }
+  .preflight .pf-row .ok   { color: var(--jp-ok); }
+  .preflight .pf-row .warn { color: var(--jp-warn); }
 
-  /* ── Step cards (Setup how-it-works) ── */
+  /* ── Step cards ── */
   .step-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px; }
-  .step-card { background: #131315; border: 1px solid #1f1f22; border-radius: 8px; padding: 20px 20px 16px; }
-  .step-card .sn { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #D4FF3A; letter-spacing: 0.2em; margin-bottom: 10px; }
-  .step-card h5 { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 400; color: #F5F4EE; margin: 0 0 8px 0; }
-  .step-card p  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8B8B85; line-height: 1.7; margin: 0; }
+  .step-card { background: var(--jp-surface); border: 1px solid var(--jp-border); border-radius: 8px; padding: 20px 20px 16px; transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease; }
+  .step-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px var(--jp-shadow); border-color: var(--jp-shadow2); }
+  .step-card .sn { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--jp-accent); letter-spacing: 0.2em; margin-bottom: 10px; }
+  .step-card h5  { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 400; color: var(--jp-fg); margin: 0 0 8px 0; }
+  .step-card p   { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--jp-dim); line-height: 1.7; margin: 0; }
   @media (max-width: 768px) {
     .step-cards { grid-template-columns: 1fr; }
     .funnel-row { flex-direction: column; gap: 12px; }
     .funnel-arrow { transform: rotate(90deg); }
   }
 
-  /* ── Status bar (Applied / All Apps) ── */
+  /* ── Status bar ── */
   .status-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
-  .sb-chip {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    padding: 5px 14px;
-    border-radius: 3px;
-    letter-spacing: 0.08em;
-  }
+  .sb-chip { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 5px 14px; border-radius: 3px; letter-spacing: 0.08em; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -647,41 +424,49 @@ render_auth_wall()
 restore_user_session()
 _USER_ID = get_user_id()  # set once per Streamlit run, passed to all tracker calls
 
-# ── Tag color patch — JS MutationObserver via same-origin iframe.
-#    CSS !important loses to Emotion (BasWeb CSS-in-JS) because Emotion
-#    re-injects <style> into <head> after every render. JS setProperty with
-#    'important' wins because it writes directly to the element's inline style,
-#    which is the highest specificity layer. The observer re-fires on any
-#    DOM/attribute mutation so newly-rendered tags are caught immediately.
+# ── Theme attribute + tag color patch ─────────────────────────────
+#    Sets data-theme on <html> so CSS vars switch instantly.
+#    MutationObserver patches Emotion-injected BasWeb tag inline styles
+#    because CSS !important loses to Streamlit's CSS-in-JS re-injection.
 import streamlit.components.v1 as _components
-_components.html("""
+_light_mode = st.session_state.get("light_mode", False)
+_theme_val  = "light" if _light_mode else "dark"
+_tag_bg     = "#F0EBE2" if _light_mode else "#1A1F0A"
+_tag_fg     = "#5C3D10" if _light_mode else "#D4FF3A"
+_tag_br     = "#D0C0A0" if _light_mode else "#2A3510"
+_tag_icon   = "#9A6F2E" if _light_mode else "#888888"
+_components.html(f"""
 <script>
-(function(){
-  function fix(){
+(function(){{
+  // Set theme on root immediately
+  window.parent.document.documentElement.setAttribute('data-theme', '{_theme_val}');
+
+  // Patch BasWeb multiselect tags (Emotion re-injects inline styles, JS wins)
+  function fix(){{
     var tags=window.parent.document.querySelectorAll('span[data-baseweb="tag"]');
-    tags.forEach(function(t){
-      t.style.setProperty('background','#2a2a2e','important');
-      t.style.setProperty('background-color','#2a2a2e','important');
-      t.style.setProperty('color','#c8c8c0','important');
-      t.style.setProperty('border','1px solid #3e3e44','important');
+    tags.forEach(function(t){{
+      t.style.setProperty('background','{_tag_bg}','important');
+      t.style.setProperty('background-color','{_tag_bg}','important');
+      t.style.setProperty('color','{_tag_fg}','important');
+      t.style.setProperty('border','1px solid {_tag_br}','important');
       t.style.setProperty('border-radius','4px','important');
-      t.querySelectorAll('span').forEach(function(s){
-        s.style.setProperty('color','#c8c8c0','important');
+      t.querySelectorAll('span').forEach(function(s){{
+        s.style.setProperty('color','{_tag_fg}','important');
         s.style.setProperty('background','transparent','important');
         s.style.setProperty('background-color','transparent','important');
-      });
-      t.querySelectorAll('svg,button,[role="presentation"]').forEach(function(s){
-        s.style.setProperty('color','#666','important');
-        s.style.setProperty('fill','#666','important');
-      });
-    });
-  }
+      }});
+      t.querySelectorAll('svg,button,[role="presentation"]').forEach(function(s){{
+        s.style.setProperty('color','{_tag_icon}','important');
+        s.style.setProperty('fill','{_tag_icon}','important');
+      }});
+    }});
+  }}
   fix();
   new MutationObserver(fix).observe(
     window.parent.document.body,
-    {childList:true,subtree:true,attributes:true,attributeFilter:['style','class']}
+    {{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']}}
   );
-})();
+}})();
 </script>
 """, height=0)
 
@@ -740,14 +525,14 @@ with st.sidebar:
     # Show logged-in user + resume status
     user_email = get_user_email() or ""
     st.markdown(
-        f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#4A4A45;'
+        f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#A0A0A0;'
         f'letter-spacing:0.1em;padding:0 20px 4px;overflow:hidden;text-overflow:ellipsis;'
         f'white-space:nowrap" title="{user_email}">{user_email}</div>',
         unsafe_allow_html=True,
     )
 
     if st.session_state.get("resume_text"):
-        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#D4FF3A;letter-spacing:0.15em;padding:0 20px 12px">✓ RESUME LOADED</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#2D7A2D;letter-spacing:0.15em;padding:0 20px 12px">✓ RESUME LOADED</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#ff6b6b;letter-spacing:0.15em;padding:0 20px 12px">⚠ NO RESUME — START HERE</div>', unsafe_allow_html=True)
 
@@ -771,6 +556,11 @@ with st.sidebar:
     page = _nav_map[_sel]
 
     st.markdown("<br>", unsafe_allow_html=True)
+    _light_now = st.session_state.get("light_mode", False)
+    _theme_label = "🌙 Dark mode" if _light_now else "☀️ Light mode"
+    if st.button(_theme_label, use_container_width=True, key="theme_toggle_btn"):
+        st.session_state["light_mode"] = not _light_now
+        st.rerun()
     if st.button("Sign Out", use_container_width=True, key="sidebar_signout"):
         sign_out()
         st.rerun()
@@ -856,7 +646,7 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
             st.caption(friendly)
 
         if days is not None:
-            color = "#8B8B85" if days <= 7 else "#f5c518" if days <= 14 else "#ff6b6b"
+            color = "#5C5C5C" if days <= 7 else "#8A6000" if days <= 14 else "#C03030"
             st.markdown(
                 f'<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:{color};'
                 f'letter-spacing:0.1em">{days}d in queue</span>',
@@ -977,8 +767,8 @@ def job_card(job, key_prefix, next_statuses, expanded=False):
                     st.markdown("**About (from their site)**")
                     st.markdown(
                         f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;'
-                        f'color:#8B8B85;line-height:1.6;padding:10px;background:#131315;'
-                        f'border-radius:6px;border:1px solid #1f1f22">{_cr["about_text"][:1200]}</div>',
+                        f'color:#3A3A3A;line-height:1.6;padding:10px;background:#F7F5F0;'
+                        f'border-radius:6px;border:1px solid #E5E0D8">{_cr["about_text"][:1200]}</div>',
                         unsafe_allow_html=True,
                     )
                 if not any(_cr.get(k) for k in ("summary", "website", "funding", "about_text")):
@@ -1166,8 +956,8 @@ def _render_swipe_card_mode(display_queue):
         st.markdown("""
         <div class="swipe-card" style="text-align:center;padding:40px 28px">
           <div style="font-size:36px;margin-bottom:12px">✓</div>
-          <h4 style="font-family:'Fraunces',serif;font-size:22px;font-weight:300;color:#F5F4EE;margin-bottom:8px">All reviewed</h4>
-          <p style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B8B85;margin:0">
+          <h4 style="font-family:'Fraunces',serif;font-size:22px;font-weight:300;color:#1A1A1A;margin-bottom:8px">All reviewed</h4>
+          <p style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5C5C5C;margin:0">
             You've gone through everything in this batch.
           </p>
         </div>
@@ -1222,7 +1012,7 @@ def _render_swipe_card_mode(display_queue):
     <div class="swipe-card" id="jp-swipe-card">
       <span class="sc-swipe-indicator skip-ind"  id="jp-skip-ind">← SKIP</span>
       <span class="sc-swipe-indicator apply-ind" id="jp-apply-ind">APPLY →</span>
-      <div class="sc-score-badge {score_cls}">{score}<span style="font-size:20px;color:#4A4A45">/10</span></div>
+      <div class="sc-score-badge {score_cls}">{score}<span style="font-size:20px;color:#A0A0A0">/10</span></div>
       <div class="sc-score-label">AI match score</div>
       <h2 class="sc-title">{title_safe}</h2>
       <div class="sc-company">{company} · {location}</div>
@@ -1796,9 +1586,9 @@ if page == "Setup":
                 with st.expander(f"Skills detected from your resume ({len(detected)} found)", expanded=False):
                     st.caption("These are the skills Job Pal will use to score job fit. If key skills are missing, make sure they appear in your resume text.")
                     st.markdown(" ".join(
-                        f'<span style="background:#1C1C18;border:1px solid #2A2A25;border-radius:4px;'
+                        f'<span style="background:#F0EBE2;border:1px solid #D0C0A0;border-radius:4px;'
                         f'padding:2px 8px;font-family:\'JetBrains Mono\',monospace;font-size:11px;'
-                        f'color:#D4FF3A;margin:2px;display:inline-block">{s}</span>'
+                        f'color:#5C3D10;margin:2px;display:inline-block">{s}</span>'
                         for s in detected
                     ), unsafe_allow_html=True)
         except Exception:
@@ -1924,7 +1714,7 @@ if page == "Setup":
 
     if _gmail_toggle:
         st.markdown("""
-        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5C5C5C;margin-bottom:8px">
         You need a <b>Gmail App Password</b> — not your regular password.<br>
         Create one at: <b>myaccount.google.com → Security → 2-Step Verification → App passwords</b>
         </div>
@@ -2023,17 +1813,17 @@ elif page == "Dashboard":
         st.caption("Score distribution")
         score_df = df["score"].dropna().value_counts().sort_index()
         if not score_df.empty:
-            st.bar_chart(score_df, color="#D4FF3A")
+            st.bar_chart(score_df, color="#9A6F2E")
     with col_b:
         st.caption("Status breakdown")
         nice_status = {k: v for k, v in status_counts.items() if v > 0}
         if nice_status:
-            st.bar_chart(pd.Series(nice_status), color="#D4FF3A")
+            st.bar_chart(pd.Series(nice_status), color="#9A6F2E")
 
     event_counts = get_event_counts(user_id=_USER_ID)
     if event_counts:
         st.markdown('<div class="section-label" style="margin-top:8px">Outcome signals</div>', unsafe_allow_html=True)
-        st.bar_chart(pd.Series(event_counts), color="#D4FF3A")
+        st.bar_chart(pd.Series(event_counts), color="#9A6F2E")
 
     # ── Source health ─────────────────────────────────────────────
     st.markdown('<div class="section-label" style="margin-top:8px">Source health</div>', unsafe_allow_html=True)
@@ -2062,7 +1852,7 @@ elif page == "Review Queue":
     page_header("Review Queue", "Jobs worth <em>applying to.</em>")
     rq_col_info, rq_col_thresh, rq_col_view = st.columns([3, 1, 1])
     with rq_col_info:
-        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8B8B85;margin-bottom:20px">AI-scored matches waiting for your review · status updates save instantly</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#5C5C5C;margin-bottom:20px">AI-scored matches waiting for your review · status updates save instantly</div>', unsafe_allow_html=True)
     with rq_col_thresh:
         queue_min_score = st.selectbox(
             "Min score",
@@ -2076,6 +1866,7 @@ elif page == "Review Queue":
         _rq_view = st.radio(
             "View",
             ["📋 List", "🃏 Cards"],
+            index=1,
             key="rq_view_radio",
             horizontal=True,
             label_visibility="collapsed",
@@ -2083,7 +1874,7 @@ elif page == "Review Queue":
 
     # ── Manual job add ────────────────────────────────────────────────
     with st.expander("➕ Add a job manually", expanded=False):
-        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:12px">Found a job outside the scraper? Paste the URL to auto-fill details, or enter them manually.</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#5C5C5C;margin-bottom:12px">Found a job outside the scraper? Paste the URL to auto-fill details, or enter them manually.</div>', unsafe_allow_html=True)
         _mj_url = st.text_input("Job URL", key="mj_url", placeholder="https://www.linkedin.com/jobs/view/...")
         _mj_col1, _mj_col2 = st.columns([1, 1])
         with _mj_col1:
@@ -2313,7 +2104,7 @@ elif page == "Review Queue":
             job_card(job, "rq", ["applied", "skipped", "rejected"])
 
     st.markdown("---")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want to talk through which jobs to apply to?</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#5C5C5C;margin-bottom:8px">Want to talk through which jobs to apply to?</div>', unsafe_allow_html=True)
     if st.button("💬 Ask Job Pal", key="cta_asst_queue", type="secondary"):
         st.session_state["_nav_page"] = "Assistant"
         st.rerun()
@@ -2598,15 +2389,15 @@ elif page == "All Applications":
     # ── Status summary bar ────────────────────────────────────────
     _sc = df["status"].value_counts().to_dict()
     _chip_styles = {
-        "new":                "background:#1a1f0a;color:#D4FF3A;border:1px solid #2a3510",
-        "applied":            "background:#0a1a1f;color:#3ad4ff;border:1px solid #102a35",
-        "interview":          "background:#1a0f1a;color:#d43aff;border:1px solid #2a1035",
-        "rejected":           "background:#1f0a0a;color:#ff3a3a;border:1px solid #350f0f",
-        "skipped":            "background:#1a1a1a;color:#666;border:1px solid #333",
-        "application_closed": "background:#1a1208;color:#ff9a3a;border:1px solid #352010",
+        "new":                "background:#EEFAE0;color:#2D6B0A;border:1px solid #B8DFA0",
+        "applied":            "background:#E0F2FA;color:#0A4A6B;border:1px solid #A0CFDF",
+        "interview":          "background:#F0EBFA;color:#4A0A7A;border:1px solid #C8B0E8",
+        "rejected":           "background:#FAE8E8;color:#8A1A1A;border:1px solid #E0B0B0",
+        "skipped":            "background:#F5F5F5;color:#666666;border:1px solid #CCCCCC",
+        "application_closed": "background:#FFF3E0;color:#7A4800;border:1px solid #F0CFA0",
     }
     _chips = " ".join(
-        f'<span class="sb-chip" style="{_chip_styles.get(s, "background:#1a1a1a;color:#888")}">'
+        f'<span class="sb-chip" style="{_chip_styles.get(s, "background:#F5F5F5;color:#888888")}">'
         f'{s.replace("application_closed","closed")} · {n}</span>'
         for s, n in sorted(_sc.items(), key=lambda x: -x[1])
     )
@@ -2672,7 +2463,7 @@ elif page == "All Applications":
             st.rerun()
 
     st.markdown("---")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Need help with a follow-up or status update?</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#5C5C5C;margin-bottom:8px">Need help with a follow-up or status update?</div>', unsafe_allow_html=True)
     if st.button("💬 Ask Job Pal", key="cta_asst_all_apps", type="secondary"):
         st.session_state["_nav_page"] = "Assistant"
         st.rerun()
@@ -2860,11 +2651,11 @@ elif page == "Events":
             _sort_label = "relevance"
         st.markdown(f'<div class="section-label">{len(ev_list)} events · sorted by {_sort_label}</div>',
                     unsafe_allow_html=True)
-        STATUS_COLORS = {"new": "#4A4A45", "interested": "#f5c518", "attending": "#D4FF3A"}
+        STATUS_COLORS = {"new": "#A0A0A0", "interested": "#8A6000", "attending": "#2D7A2D"}
         for ev in ev_list:
             score  = ev.get("relevance_score") or 0
             status = ev.get("status", "new")
-            status_dot = f'<span style="color:{STATUS_COLORS.get(status,"#4A4A45")};font-size:10px">● {status.upper()}</span>'
+            status_dot = f'<span style="color:{STATUS_COLORS.get(status,"#A0A0A0")};font-size:10px">● {status.upper()}</span>'
             raw_date = ev.get("start_date", "")
             try:
                 from datetime import datetime
@@ -2879,7 +2670,7 @@ elif page == "Events":
                 with top_col:
                     st.markdown(
                         f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;'
-                        f'color:#8B8B85;margin-bottom:8px">'
+                        f'color:#5C5C5C;margin-bottom:8px">'
                         f'{date_str} &nbsp;·&nbsp; '
                         f'{ev.get("location","")[:40]} &nbsp;·&nbsp; '
                         f'{ev.get("organizer","")[:35]}'
@@ -2918,7 +2709,7 @@ elif page == "Events":
         _render_events([e for e in events if e.get("status") == "attending"], "att")
 
     st.markdown("---")
-    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#8B8B85;margin-bottom:8px">Want networking tips or event prep help?</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#5C5C5C;margin-bottom:8px">Want networking tips or event prep help?</div>', unsafe_allow_html=True)
     if st.button("Ask Job Pal", key="cta_asst_events", type="secondary"):
         st.session_state["_nav_page"] = "Assistant"
         st.rerun()
@@ -2952,13 +2743,13 @@ elif page == "Run Pipeline":
 
     st.markdown(f"""
     <div class="preflight">
-      <div class="pf-row"><span class="ok">✓</span> Resume loaded &nbsp;<span style="color:#4A4A45">({_resume_kb} KB)</span></div>
+      <div class="pf-row"><span class="ok">✓</span> Resume loaded &nbsp;<span style="color:#A0A0A0">({_resume_kb} KB)</span></div>
       <div class="pf-row">
         {'<span class="ok">✓</span>' if _roles else '<span class="warn">✗</span>'}
-        {'Target roles: <span style="color:#F5F4EE">' + _roles_label + '</span>' if _roles else 'No target roles set — go to Setup before running'}
+        {'Target roles: <span style="color:#1A1A1A">' + _roles_label + '</span>' if _roles else 'No target roles set — go to Setup before running'}
       </div>
-      <div class="pf-row"><span class="ok">✓</span> Salary floor: <span style="color:#F5F4EE">{_salary_label}</span></div>
-      <div class="pf-row"><span class="ok">✓</span> Locations: <span style="color:#F5F4EE">{_locs_label}</span></div>
+      <div class="pf-row"><span class="ok">✓</span> Salary floor: <span style="color:#1A1A1A">{_salary_label}</span></div>
+      <div class="pf-row"><span class="ok">✓</span> Locations: <span style="color:#1A1A1A">{_locs_label}</span></div>
       <div class="pf-row"><span class="ok">✓</span> Sources: LinkedIn · Adzuna · USAJobs · The Muse · RemoteOK · Remotive · We Work Remotely · Jobicy</div>
     </div>
     """, unsafe_allow_html=True)
@@ -3138,7 +2929,7 @@ elif page == "Run Pipeline":
         from tracker import get_source_freshness
         freshness = get_source_freshness(user_id=_USER_ID)
         if freshness:
-            _STATUS_COLOR = {"fresh": "#D4FF3A", "ok": "#8BC34A", "stale": "#FF6B6B", "unknown": "#888"}
+            _STATUS_COLOR = {"fresh": "#2D7A2D", "ok": "#4A8A2D", "stale": "#C03030", "unknown": "#A0A0A0"}
             _STATUS_LABEL = {"fresh": "Fresh", "ok": "OK", "stale": "Stale", "unknown": "?"}
             cols = st.columns(len(freshness))
             for col, f in zip(cols, freshness):
@@ -3155,10 +2946,10 @@ elif page == "Run Pipeline":
                 else:
                     age_str = f"{age/24:.1f}d ago"
                 col.markdown(
-                    f'<div style="background:#1C1C18;border:1px solid #2A2A25;border-radius:8px;padding:12px 14px">'
-                    f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.1em">{f["source"]}</div>'
-                    f'<div style="font-size:18px;font-weight:600;color:#F5F4EE;margin:4px 0">{f["count"]}</div>'
-                    f'<div style="font-size:11px;color:#888;margin-bottom:6px">{age_str}</div>'
+                    f'<div style="background:#FFFFFF;border:1px solid #E5E0D8;border-radius:8px;padding:12px 14px">'
+                    f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#A0A0A0;text-transform:uppercase;letter-spacing:0.1em">{f["source"]}</div>'
+                    f'<div style="font-size:18px;font-weight:600;color:#1A1A1A;margin:4px 0">{f["count"]}</div>'
+                    f'<div style="font-size:11px;color:#A0A0A0;margin-bottom:6px">{age_str}</div>'
                     f'<span style="background:{color}20;color:{color};font-size:10px;font-family:\'JetBrains Mono\',monospace;'
                     f'padding:2px 8px;border-radius:4px;text-transform:uppercase">{label}</span>'
                     f'</div>',
@@ -3306,14 +3097,14 @@ elif page == "Assistant":
     with ctx_col:
         # Pipeline snapshot
         st.markdown(f"""
-        <div style="background:#131315;border:1px solid #1f1f22;border-radius:8px;padding:14px 16px;margin-bottom:12px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:10px">PIPELINE</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#F5F4EE;line-height:2">
-            <span style="color:#D4FF3A;font-size:15px">{_asst_strong}</span> <span style="color:#4A4A45">strong (8+)</span><br>
-            <span style="color:#F5C842;font-size:15px">{_asst_solid}</span> <span style="color:#4A4A45">solid (7)</span><br>
-            <span style="color:#8B8B85;font-size:15px">{_asst_consider}</span> <span style="color:#4A4A45">consider (6)</span>
+        <div style="background:#FFFFFF;border:1px solid #E5E0D8;border-radius:8px;padding:14px 16px;margin-bottom:12px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A0A0A0;letter-spacing:0.1em;margin-bottom:10px">PIPELINE</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#1A1A1A;line-height:2">
+            <span style="color:#2D7A2D;font-size:15px">{_asst_strong}</span> <span style="color:#A0A0A0">strong (8+)</span><br>
+            <span style="color:#8A6000;font-size:15px">{_asst_solid}</span> <span style="color:#A0A0A0">solid (7)</span><br>
+            <span style="color:#5C5C5C;font-size:15px">{_asst_consider}</span> <span style="color:#A0A0A0">consider (6)</span>
           </div>
-          <div style="border-top:1px solid #1f1f22;margin-top:10px;padding-top:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#4A4A45">
+          <div style="border-top:1px solid #E5E0D8;margin-top:10px;padding-top:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#A0A0A0">
             {len(_asst_applied)} applied &nbsp;·&nbsp; {len(_asst_interviews)} interview{"s" if len(_asst_interviews) != 1 else ""}
           </div>
         </div>
@@ -3321,17 +3112,17 @@ elif page == "Assistant":
 
         # Active interviews — prominent if any
         if _asst_interviews:
-            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#D4FF3A;letter-spacing:0.1em;margin-bottom:6px">ACTIVE INTERVIEWS</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#9A6F2E;letter-spacing:0.1em;margin-bottom:6px">ACTIVE INTERVIEWS</div>', unsafe_allow_html=True)
             for _iv in _asst_interviews:
                 st.markdown(f"""
-                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#F5F4EE;padding:5px 0;border-bottom:1px solid #1f1f22">
-                  {_iv.get('title','')[:32]}<br><span style="color:#4A4A45">{_iv.get('company','')[:28]}</span>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#1A1A1A;padding:5px 0;border-bottom:1px solid #E5E0D8">
+                  {_iv.get('title','')[:32]}<br><span style="color:#A0A0A0">{_iv.get('company','')[:28]}</span>
                 </div>""", unsafe_allow_html=True)
             st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
 
         # Job selector — selecting auto-primes context, no extra button
         if _asst_queue:
-            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#4A4A45;letter-spacing:0.1em;margin-bottom:6px">LOAD A JOB INTO CHAT</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#A0A0A0;letter-spacing:0.1em;margin-bottom:6px">LOAD A JOB INTO CHAT</div>', unsafe_allow_html=True)
             _job_options = ["— select to focus chat —"] + [
                 f"{j.get('score')}/10 · {j.get('title','')[:30]} @ {j.get('company','')[:18]}"
                 for j in _asst_queue[:25]
@@ -3365,10 +3156,10 @@ elif page == "Assistant":
             _loaded = st.session_state.get("_asst_job_context")
             if _loaded and _selected_label != "— select to focus chat —":
                 st.markdown(f"""
-                <div style="background:#0d1f0d;border:1px solid #1a3a1a;border-radius:6px;padding:8px 10px;margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:10px">
-                  <span style="color:#D4FF3A">✓ loaded</span><br>
-                  <span style="color:#8B8B85">{_loaded.get('title','')[:35]}</span><br>
-                  <span style="color:#4A4A45">{_loaded.get('company','')}</span>
+                <div style="background:#EEFAE0;border:1px solid #B8DFA0;border-radius:6px;padding:8px 10px;margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:10px">
+                  <span style="color:#2D6B0A">✓ loaded</span><br>
+                  <span style="color:#5C5C5C">{_loaded.get('title','')[:35]}</span><br>
+                  <span style="color:#A0A0A0">{_loaded.get('company','')}</span>
                 </div>""", unsafe_allow_html=True)
                 if st.button("✕ Clear job context", key="clear_job_ctx", use_container_width=True):
                     st.session_state.pop("_asst_job_context", None)
@@ -3378,8 +3169,8 @@ elif page == "Assistant":
 
         # Resume badge — compact, at bottom
         st.markdown(f"""
-        <div style="margin-top:16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#4A4A45;padding:8px 0;border-top:1px solid #1f1f22">
-          <span style="color:#D4FF3A">✓</span> Full resume in context ({len(resume_text):,} chars)
+        <div style="margin-top:16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#A0A0A0;padding:8px 0;border-top:1px solid #E5E0D8">
+          <span style="color:#2D7A2D">✓</span> Full resume in context ({len(resume_text):,} chars)
         </div>
         """, unsafe_allow_html=True)
 

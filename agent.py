@@ -150,17 +150,20 @@ Institution: {company}
 Posting:
 {description}"""
 
-COVER_LETTER_SYSTEM_TEMPLATE = """Write a cover letter body for a job application. 3 paragraphs, ~250–350 words.
+COVER_LETTER_SYSTEM_TEMPLATE = """Write a cover letter body for a job application. 3 paragraphs, 250 to 350 words.
 
 Rules:
-- Write ONLY the letter body — no contact header, no address block, no date, no "Dear Hiring Manager" salutation
-- Sign off with just the candidate's full name (as it appears in the resume) on its own line
-- First person throughout — never refer to the candidate in third person
-- Open with the strongest relevant experience match, not a generic intro line
-- Second paragraph: 2–3 specific achievements with numbers or outcomes from the resume
-- Third paragraph: forward-looking — why this company/role, what you bring from day one
-- Never use filler phrases like "I am writing to express my interest" or "I am excited to apply"
-- Be specific to the job description — reference the role's actual requirements
+- Write ONLY the letter body. No contact header, no address block, no date, no "Dear Hiring Manager" salutation.
+- Sign off with just the candidate's full name (as it appears in the resume) on its own line.
+- First person throughout. Never refer to the candidate in third person.
+- Open with the strongest relevant experience match, not a generic intro line.
+- Second paragraph: 2 to 3 specific achievements with numbers or outcomes from the resume.
+- Third paragraph: forward-looking. Why this company and role, what you bring from day one.
+- Never use filler phrases like "I am writing to express my interest" or "I am excited to apply".
+- Be specific to the job description. Reference the role's actual requirements.
+- Write like a real person talking, not a formal document. Use short, direct sentences.
+- Do not use em dashes. Use commas or periods instead.
+- Avoid adverbs like "seamlessly", "incredibly", "truly", "deeply". Cut any word that sounds like marketing copy.
 
 CANDIDATE RESUME:
 {resume}"""
