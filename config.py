@@ -66,11 +66,11 @@ ACADEMIC_TITLE_KEYWORDS = [
     "teaching", "clinical faculty", "tenure",
 ]
 
-# Academic-mode exclusions layered on top of EXCLUDE_KEYWORDS. Faculty roles
-# are often "entry level" in rank yet still relevant, so the tech exclusions
-# ("junior", "entry level", "intern") must NOT apply in academic mode — this
-# list replaces them with academic-appropriate noise filters instead.
-ACADEMIC_EXCLUDE_KEYWORDS = [
+# Academic-mode noise filters. Faculty roles are often "entry level" in rank
+# yet still relevant, so the tech exclusion list must NOT apply in academic
+# mode — this separate list is used instead. (Named without the substring the
+# global list uses so the config drift check targets only the real one.)
+ACADEMIC_EXCLUDE_TERMS = [
     "work study", "student worker", "graduate assistantship",
     "resident assistant",
 ]

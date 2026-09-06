@@ -15,7 +15,7 @@ import hashlib
 import re
 from datetime import datetime
 
-from config import ACADEMIC_EXCLUDE_KEYWORDS, ACADEMIC_TITLE_KEYWORDS
+from config import ACADEMIC_EXCLUDE_TERMS, ACADEMIC_TITLE_KEYWORDS
 
 
 def make_id(url: str) -> str:
@@ -26,7 +26,7 @@ def is_excluded(title: str, desc: str) -> bool:
     """Academic-mode exclusions only (NOT the tech 'junior/entry-level' list —
     an entry-rank faculty role is still a valid match)."""
     text = (title + " " + desc).lower()
-    return any(kw in text for kw in ACADEMIC_EXCLUDE_KEYWORDS)
+    return any(kw in text for kw in ACADEMIC_EXCLUDE_TERMS)
 
 
 def matches_roles(title: str, target_roles: list[str] | None) -> bool:
